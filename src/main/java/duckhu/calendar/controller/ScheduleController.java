@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,12 +17,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 일정 REST API 컨트롤러
- * Vue 프론트엔드와 통신하기 위한 REST API 엔드포인트 제공
+ * 향상된 일정 REST API 컨트롤러
+ * 이미지, 링크, 추천 기능 등을 포함한 향상된 일정 관리 API
  */
 @RestController
 @RequestMapping("/schedules")
-@CrossOrigin(origins = "http://localhost:5173") // Vue 개발 서버 허용
+@CrossOrigin(origins = "http://localhost:5173")
 public class ScheduleController {
 
     private final ScheduleService scheduleService;
@@ -36,23 +37,38 @@ public class ScheduleController {
      * GET /api/schedules
      */
     @GetMapping
-    public ResponseEntity<?> getAllSchedules() {
+    public ResponseEntity<?> getAllSchedules(
+            @RequestParam(required = false) Boolean featured,
+            @RequestParam(required = false) String sortBy) {
         try {
-            List<ScheduleResponseDto> schedules = scheduleService.getAllSchedules();
-            return ResponseEntity.ok(schedules);
+            List<ScheduleResponseDto> schedules;
+
+            if (featured != null && featured) {
+                schedules = scheduleService.getFeaturedSchedules();
+            } else {
+                schedules = scheduleService.getAllSchedules(sortBy);
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("schedules", schedules);
+            response.put("count", schedules.size());
+            response.put("featuredCount", schedules.stream()
+                    .mapToInt(s -> s.getIsFeatured() ? 1 : 0).sum());
+
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
             return createErrorResponse("일정 목록 조회에 실패했습니다.", e.getMessage());
         }
     }
 
     /**
-     * 특정 ID의 일정 조회
+     * 특정 ID의 일정 조회 (조회수 증가)
      * GET /api/schedules/{id}
      */
     @GetMapping("/{id}")
     public ResponseEntity<?> getScheduleById(@PathVariable Long id) {
         try {
-            ScheduleResponseDto schedule = scheduleService.getScheduleById(id);
+            ScheduleResponseDto schedule = scheduleService.getScheduleByIdWithViewCount(id);
             return ResponseEntity.ok(schedule);
         } catch (RuntimeException e) {
             return createErrorResponse("일정 조회에 실패했습니다.", e.getMessage(), HttpStatus.NOT_FOUND);
@@ -62,10 +78,11 @@ public class ScheduleController {
     }
 
     /**
-     * 새 일정 생성
+     * 새 일정 생성 (관리자 전용)
      * POST /api/schedules
      */
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> createSchedule(@Valid @RequestBody ScheduleRequestDto requestDto,
                                             BindingResult bindingResult) {
         try {
@@ -74,8 +91,19 @@ public class ScheduleController {
                 return createValidationErrorResponse(bindingResult);
             }
 
+            // 추가 비즈니스 로직 검증
+            if (!requestDto.isValid()) {
+                return createErrorResponse("입력 데이터가 올바르지 않습니다.",
+                        "날짜, 시간, 이미지, 링크 정보를 다시 확인해주세요.", HttpStatus.BAD_REQUEST);
+            }
+
             ScheduleResponseDto createdSchedule = scheduleService.createSchedule(requestDto);
-            return ResponseEntity.status(HttpStatus.CREATED).body(createdSchedule);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("schedule", createdSchedule);
+            response.put("message", "일정이 성공적으로 생성되었습니다.");
+
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
 
         } catch (RuntimeException e) {
             return createErrorResponse("일정 생성에 실패했습니다.", e.getMessage(), HttpStatus.BAD_REQUEST);
@@ -85,10 +113,11 @@ public class ScheduleController {
     }
 
     /**
-     * 일정 수정
+     * 일정 수정 (관리자 전용)
      * PUT /api/schedules/{id}
      */
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> updateSchedule(@PathVariable Long id,
                                             @Valid @RequestBody ScheduleRequestDto requestDto,
                                             BindingResult bindingResult) {
@@ -98,8 +127,19 @@ public class ScheduleController {
                 return createValidationErrorResponse(bindingResult);
             }
 
+            // 추가 비즈니스 로직 검증
+            if (!requestDto.isValid()) {
+                return createErrorResponse("입력 데이터가 올바르지 않습니다.",
+                        "날짜, 시간, 이미지, 링크 정보를 다시 확인해주세요.", HttpStatus.BAD_REQUEST);
+            }
+
             ScheduleResponseDto updatedSchedule = scheduleService.updateSchedule(id, requestDto);
-            return ResponseEntity.ok(updatedSchedule);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("schedule", updatedSchedule);
+            response.put("message", "일정이 성공적으로 수정되었습니다.");
+
+            return ResponseEntity.ok(response);
 
         } catch (RuntimeException e) {
             if (e.getMessage().contains("찾을 수 없습니다")) {
@@ -112,10 +152,11 @@ public class ScheduleController {
     }
 
     /**
-     * 일정 삭제
+     * 일정 삭제 (관리자 전용)
      * DELETE /api/schedules/{id}
      */
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> deleteSchedule(@PathVariable Long id) {
         try {
             scheduleService.deleteSchedule(id);
@@ -136,14 +177,21 @@ public class ScheduleController {
     /**
      * 특정 날짜의 일정 조회
      * GET /api/schedules/date/{date}
-     * @param date YYYY-MM-DD 형식
      */
     @GetMapping("/date/{date}")
     public ResponseEntity<?> getSchedulesByDate(@PathVariable String date) {
         try {
             LocalDate targetDate = LocalDate.parse(date);
             List<ScheduleResponseDto> schedules = scheduleService.getSchedulesByDate(targetDate);
-            return ResponseEntity.ok(schedules);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("date", date);
+            response.put("schedules", schedules);
+            response.put("count", schedules.size());
+            response.put("featuredCount", schedules.stream()
+                    .mapToInt(s -> s.getIsFeatured() ? 1 : 0).sum());
+
+            return ResponseEntity.ok(response);
 
         } catch (Exception e) {
             return createErrorResponse("날짜별 일정 조회에 실패했습니다.",
@@ -167,7 +215,16 @@ public class ScheduleController {
             }
 
             List<ScheduleResponseDto> schedules = scheduleService.getSchedulesByDateRange(startDate, endDate);
-            return ResponseEntity.ok(schedules);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("startDate", start);
+            response.put("endDate", end);
+            response.put("schedules", schedules);
+            response.put("count", schedules.size());
+            response.put("featuredCount", schedules.stream()
+                    .mapToInt(s -> s.getIsFeatured() ? 1 : 0).sum());
+
+            return ResponseEntity.ok(response);
 
         } catch (Exception e) {
             return createErrorResponse("날짜 범위 일정 조회에 실패했습니다.",
@@ -188,7 +245,16 @@ public class ScheduleController {
             }
 
             List<ScheduleResponseDto> schedules = scheduleService.getSchedulesByMonth(year, month);
-            return ResponseEntity.ok(schedules);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("year", year);
+            response.put("month", month);
+            response.put("schedules", schedules);
+            response.put("count", schedules.size());
+            response.put("featuredCount", schedules.stream()
+                    .mapToInt(s -> s.getIsFeatured() ? 1 : 0).sum());
+
+            return ResponseEntity.ok(response);
 
         } catch (Exception e) {
             return createErrorResponse("월별 일정 조회에 실패했습니다.", e.getMessage());
@@ -196,14 +262,24 @@ public class ScheduleController {
     }
 
     /**
-     * 제목으로 일정 검색
-     * GET /api/schedules/search?title=검색어
+     * 일정 검색
+     * GET /api/schedules/search?title=검색어&category=FESTIVAL
      */
     @GetMapping("/search")
-    public ResponseEntity<?> searchSchedules(@RequestParam(required = false) String title) {
+    public ResponseEntity<?> searchSchedules(@RequestParam(required = false) String title,
+                                             @RequestParam(required = false) String category) {
         try {
-            List<ScheduleResponseDto> schedules = scheduleService.searchSchedulesByTitle(title);
-            return ResponseEntity.ok(schedules);
+            List<ScheduleResponseDto> schedules = scheduleService.searchSchedules(title, category);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("query", Map.of(
+                    "title", title != null ? title : "",
+                    "category", category != null ? category : ""
+            ));
+            response.put("schedules", schedules);
+            response.put("count", schedules.size());
+
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
             return createErrorResponse("일정 검색에 실패했습니다.", e.getMessage());
         }
@@ -220,8 +296,10 @@ public class ScheduleController {
 
             Map<String, Object> response = new HashMap<>();
             response.put("date", LocalDate.now().toString());
-            response.put("count", schedules.size());
             response.put("schedules", schedules);
+            response.put("count", schedules.size());
+            response.put("featuredCount", schedules.stream()
+                    .mapToInt(s -> s.getIsFeatured() ? 1 : 0).sum());
 
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -246,12 +324,139 @@ public class ScheduleController {
             response.put("days", days);
             response.put("startDate", LocalDate.now().toString());
             response.put("endDate", LocalDate.now().plusDays(days).toString());
-            response.put("count", schedules.size());
             response.put("schedules", schedules);
+            response.put("count", schedules.size());
+            response.put("featuredCount", schedules.stream()
+                    .mapToInt(s -> s.getIsFeatured() ? 1 : 0).sum());
 
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return createErrorResponse("다가오는 일정 조회에 실패했습니다.", e.getMessage());
+        }
+    }
+
+    /**
+     * 추천 이벤트 토글 (관리자 전용)
+     * PATCH /api/schedules/{id}/featured
+     */
+    @PatchMapping("/{id}/featured")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> toggleFeatured(@PathVariable Long id,
+                                            @RequestBody Map<String, Boolean> request) {
+        try {
+            Boolean isFeatured = request.get("isFeatured");
+            if (isFeatured == null) {
+                return createErrorResponse("잘못된 요청", "isFeatured 값이 필요합니다.", HttpStatus.BAD_REQUEST);
+            }
+
+            ScheduleResponseDto updatedSchedule = scheduleService.toggleFeatured(id, isFeatured);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("schedule", updatedSchedule);
+            response.put("message", isFeatured ? "추천 이벤트로 설정되었습니다." : "추천 이벤트에서 해제되었습니다.");
+
+            return ResponseEntity.ok(response);
+
+        } catch (RuntimeException e) {
+            return createErrorResponse("추천 설정 변경에 실패했습니다.", e.getMessage(), HttpStatus.NOT_FOUND);
+        } catch (Exception e) {
+            return createErrorResponse("추천 설정 변경 중 오류가 발생했습니다.", e.getMessage());
+        }
+    }
+
+    /**
+     * 조회수 증가
+     * POST /api/schedules/{id}/view
+     */
+    @PostMapping("/{id}/view")
+    public ResponseEntity<?> incrementViewCount(@PathVariable Long id) {
+        try {
+            scheduleService.incrementViewCount(id);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "조회수가 증가되었습니다.");
+            response.put("scheduleId", id);
+
+            return ResponseEntity.ok(response);
+
+        } catch (RuntimeException e) {
+            return createErrorResponse("조회수 증가에 실패했습니다.", e.getMessage(), HttpStatus.NOT_FOUND);
+        } catch (Exception e) {
+            return createErrorResponse("조회수 증가 중 오류가 발생했습니다.", e.getMessage());
+        }
+    }
+
+    /**
+     * 추천 이벤트 목록 조회
+     * GET /api/schedules/featured
+     */
+    @GetMapping("/featured")
+    public ResponseEntity<?> getFeaturedSchedules(@RequestParam(defaultValue = "10") int limit) {
+        try {
+            List<ScheduleResponseDto> schedules = scheduleService.getFeaturedSchedules(limit);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("schedules", schedules);
+            response.put("count", schedules.size());
+            response.put("limit", limit);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return createErrorResponse("추천 이벤트 조회에 실패했습니다.", e.getMessage());
+        }
+    }
+
+    /**
+     * 인기 이벤트 목록 조회 (조회수 기준)
+     * GET /api/schedules/popular
+     */
+    @GetMapping("/popular")
+    public ResponseEntity<?> getPopularSchedules(@RequestParam(defaultValue = "10") int limit) {
+        try {
+            List<ScheduleResponseDto> schedules = scheduleService.getPopularSchedules(limit);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("schedules", schedules);
+            response.put("count", schedules.size());
+            response.put("limit", limit);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return createErrorResponse("인기 이벤트 조회에 실패했습니다.", e.getMessage());
+        }
+    }
+
+    /**
+     * 최근 추가된 이벤트 조회
+     * GET /api/schedules/recent
+     */
+    @GetMapping("/recent")
+    public ResponseEntity<?> getRecentSchedules(@RequestParam(defaultValue = "10") int limit) {
+        try {
+            List<ScheduleResponseDto> schedules = scheduleService.getRecentSchedules(limit);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("schedules", schedules);
+            response.put("count", schedules.size());
+            response.put("limit", limit);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return createErrorResponse("최근 이벤트 조회에 실패했습니다.", e.getMessage());
+        }
+    }
+
+    /**
+     * 일정 통계 조회
+     * GET /api/schedules/stats
+     */
+    @GetMapping("/stats")
+    public ResponseEntity<?> getScheduleStats() {
+        try {
+            Map<String, Object> stats = scheduleService.getScheduleStatistics();
+            return ResponseEntity.ok(stats);
+        } catch (Exception e) {
+            return createErrorResponse("일정 통계 조회에 실패했습니다.", e.getMessage());
         }
     }
 
@@ -263,9 +468,16 @@ public class ScheduleController {
     public ResponseEntity<?> healthCheck() {
         Map<String, Object> response = new HashMap<>();
         response.put("status", "OK");
-        response.put("message", "Calendar API is running");
+        response.put("message", "Enhanced Calendar API is running");
         response.put("timestamp", java.time.LocalDateTime.now().toString());
-        response.put("version", "1.0.0");
+        response.put("version", "2.0.0");
+        response.put("features", List.of(
+                "이미지 업로드 지원",
+                "링크 관리",
+                "추천 이벤트",
+                "조회수 추적",
+                "향상된 검색"
+        ));
 
         return ResponseEntity.ok(response);
     }
