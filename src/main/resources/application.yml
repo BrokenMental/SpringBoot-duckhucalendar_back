@@ -61,3 +61,6 @@ management:
   endpoint:
     health:
       show-details: always
+
+admin:
+  emails: nukabyte@gmail.com

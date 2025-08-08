@@ -7,6 +7,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -35,9 +36,12 @@ public class SecurityConfig {
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
+                // JWT 인증 필터 추가
+                .addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class)
+
                 // 요청 권한 설정
                 .authorizeHttpRequests(authz -> authz
-                        // 모든 GET 요청은 허용
+                        // 인증 없이 접근 가능한 엔드포인트
                         .requestMatchers("GET", "/api/schedules/**").permitAll()
                         .requestMatchers("POST", "/api/schedules/*/view").permitAll()
                         .requestMatchers("/api/event-requests/**").permitAll()
@@ -46,11 +50,12 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/login").permitAll()
                         .requestMatchers("/api/files/upload/**").permitAll()
 
-                        // POST, PUT, DELETE, PATCH는 ADMIN 권한 필요
+                        // 관리자 권한 필요
                         .requestMatchers("POST", "/api/schedules").hasRole("ADMIN")
                         .requestMatchers("PUT", "/api/schedules/**").hasRole("ADMIN")
                         .requestMatchers("DELETE", "/api/schedules/**").hasRole("ADMIN")
                         .requestMatchers("PATCH", "/api/schedules/**").hasRole("ADMIN")
+                        .requestMatchers("/api/admin/me").hasRole("ADMIN")
 
                         // 나머지 요청은 인증 필요
                         .anyRequest().authenticated()
@@ -87,5 +92,10 @@ public class SecurityConfig {
         source.registerCorsConfiguration("/api/**", configuration);
 
         return source;
+    }
+
+    @Bean
+    public JwtAuthenticationFilter jwtAuthenticationFilter() {
+        return new JwtAuthenticationFilter();
     }
 }
