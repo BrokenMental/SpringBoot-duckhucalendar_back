@@ -236,6 +236,7 @@ public class ScheduleController {
      * 특정 월의 일정 조회
      * GET /api/schedules/month/{year}/{month}
      */
+
     @GetMapping("/month/{year}/{month}")
     public ResponseEntity<?> getSchedulesByMonth(@PathVariable int year,
                                                  @PathVariable int month) {
