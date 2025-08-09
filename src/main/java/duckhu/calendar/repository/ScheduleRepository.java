@@ -141,6 +141,26 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
     List<Schedule> findByViewCountGreaterThanOrderByViewCountDesc(Integer minViewCount, Pageable pageable);
 
     /**
+     * 추천 이벤트 조회 (페이징 지원)
+     */
+    List<Schedule> findByIsFeaturedTrueOrderByStartDateAsc(Pageable pageable);
+
+    /**
+     * 추천 이벤트 조회 (전체)
+     */
+    List<Schedule> findByIsFeaturedTrueOrderByStartDateAsc();
+
+    /**
+     * 조회수 기준 인기 이벤트 조회
+     */
+    List<Schedule> findAllByOrderByViewCountDesc(Pageable pageable);
+
+    /**
+     * 생성일 기준 최근 이벤트 조회
+     */
+    List<Schedule> findAllByOrderByCreatedAtDesc(Pageable pageable);
+
+    /**
      * 제목과 카테고리로 검색
      * @param title 검색할 제목
      * @param category 카테고리

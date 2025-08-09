@@ -289,7 +289,10 @@ public class ScheduleService {
      */
     @Transactional(readOnly = true)
     public List<ScheduleResponseDto> getFeaturedSchedules() {
-        return getFeaturedSchedules(10); // 기본 10개
+        List<Schedule> schedules = scheduleRepository.findByIsFeaturedTrueOrderByStartDateAsc();
+        return schedules.stream()
+                .map(ScheduleResponseDto::from)
+                .collect(Collectors.toList());
     }
 
     /**
@@ -299,11 +302,8 @@ public class ScheduleService {
      */
     @Transactional(readOnly = true)
     public List<ScheduleResponseDto> getFeaturedSchedules(int limit) {
-        Pageable pageable = PageRequest.of(0, limit,
-                Sort.by(Sort.Direction.ASC, "startDate")
-                        .and(Sort.by(Sort.Direction.DESC, "viewCount")));
-
-        List<Schedule> schedules = scheduleRepository.findByIsFeaturedTrueOrderByStartDateAscViewCountDesc(pageable);
+        Pageable pageable = PageRequest.of(0, limit, Sort.by("startDate").ascending());
+        List<Schedule> schedules = scheduleRepository.findByIsFeaturedTrueOrderByStartDateAsc(pageable);
         return schedules.stream()
                 .map(ScheduleResponseDto::from)
                 .collect(Collectors.toList());
@@ -316,8 +316,8 @@ public class ScheduleService {
      */
     @Transactional(readOnly = true)
     public List<ScheduleResponseDto> getPopularSchedules(int limit) {
-        Pageable pageable = PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "viewCount"));
-        List<Schedule> schedules = scheduleRepository.findByViewCountGreaterThanOrderByViewCountDesc(0, pageable);
+        Pageable pageable = PageRequest.of(0, limit, Sort.by("viewCount").descending());
+        List<Schedule> schedules = scheduleRepository.findAllByOrderByViewCountDesc(pageable);
         return schedules.stream()
                 .map(ScheduleResponseDto::from)
                 .collect(Collectors.toList());
@@ -330,7 +330,8 @@ public class ScheduleService {
      */
     @Transactional(readOnly = true)
     public List<ScheduleResponseDto> getRecentSchedules(int limit) {
-        List<Schedule> schedules = scheduleRepository.findRecentSchedules(limit);
+        Pageable pageable = PageRequest.of(0, limit, Sort.by("createdAt").descending());
+        List<Schedule> schedules = scheduleRepository.findAllByOrderByCreatedAtDesc(pageable);
         return schedules.stream()
                 .map(ScheduleResponseDto::from)
                 .collect(Collectors.toList());

@@ -13,10 +13,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 /**
- * JWT 인증 필터
+ * JWT 인증 필터 (수정된 버전)
  */
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -27,9 +29,40 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Autowired
     private AdminService adminService;
 
+    // 인증이 필요 없는 경로들
+    private static final List<String> EXCLUDED_PATHS = Arrays.asList(
+            "/admin/request-temp-password",
+            "/admin/login",
+            "/schedules",
+            "/holidays",
+            "/event-requests",
+            "/email-subscriptions"
+    );
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
+
+        // CORS preflight 요청은 바로 통과
+        if ("OPTIONS".equals(request.getMethod())) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        String requestPath = request.getRequestURI();
+        String method = request.getMethod();
+
+        // GET 요청이고 제외 경로에 포함되면 인증 없이 통과
+        if ("GET".equals(method) && isExcludedPath(requestPath)) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        // POST /schedules/*/view 요청은 인증 없이 통과
+        if ("POST".equals(method) && requestPath.matches(".*/schedules/.+/view")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
 
         String authHeader = request.getHeader("Authorization");
 
@@ -60,5 +93,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    /**
+     * 제외 경로 확인
+     */
+    private boolean isExcludedPath(String requestPath) {
+        return EXCLUDED_PATHS.stream()
+                .anyMatch(excluded -> requestPath.startsWith(excluded) || requestPath.contains(excluded));
     }
 }

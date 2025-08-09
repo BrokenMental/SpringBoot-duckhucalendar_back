@@ -15,8 +15,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.Arrays;
 
 /**
- * Spring Security 설정 (최대 호환성 버전)
- * 모든 Spring Security 버전에서 동작하도록 단순화
+ * Spring Security 설정 (수정된 버전)
  */
 @Configuration
 @EnableWebSecurity
@@ -41,24 +40,31 @@ public class SecurityConfig {
 
                 // 요청 권한 설정
                 .authorizeHttpRequests(authz -> authz
-                        // 인증 없이 접근 가능한 엔드포인트
-                        .requestMatchers("GET", "/api/schedules/**").permitAll()
-                        .requestMatchers("POST", "/api/schedules/*/view").permitAll()
-                        .requestMatchers("/api/event-requests/**").permitAll()
-                        .requestMatchers("/api/email-subscriptions/**").permitAll()
-                        .requestMatchers("/api/admin/request-temp-password").permitAll()
-                        .requestMatchers("/api/admin/login").permitAll()
-                        .requestMatchers("/api/files/upload/**").permitAll()
+                        // 인증 없이 접근 가능한 엔드포인트 (경로 수정)
+                        .requestMatchers("GET", "/schedules", "/schedules/**").permitAll()
+                        .requestMatchers("POST", "/schedules/*/view").permitAll()
+                        .requestMatchers("GET", "/holidays/**").permitAll()
+                        .requestMatchers("/event-requests/**").permitAll()
+                        .requestMatchers("/email-subscriptions/**").permitAll()
+                        .requestMatchers("/admin/request-temp-password").permitAll()
+                        .requestMatchers("/admin/login").permitAll()
+                        .requestMatchers("/files/upload/**").permitAll()
+
+                        // OPTIONS 요청 허용 (CORS preflight)
+                        .requestMatchers("OPTIONS", "/**").permitAll()
 
                         // 관리자 권한 필요
-                        .requestMatchers("POST", "/api/schedules").hasRole("ADMIN")
-                        .requestMatchers("PUT", "/api/schedules/**").hasRole("ADMIN")
-                        .requestMatchers("DELETE", "/api/schedules/**").hasRole("ADMIN")
-                        .requestMatchers("PATCH", "/api/schedules/**").hasRole("ADMIN")
-                        .requestMatchers("/api/admin/me").hasRole("ADMIN")
+                        .requestMatchers("POST", "/schedules").hasRole("ADMIN")
+                        .requestMatchers("PUT", "/schedules/**").hasRole("ADMIN")
+                        .requestMatchers("DELETE", "/schedules/**").hasRole("ADMIN")
+                        .requestMatchers("PATCH", "/schedules/**").hasRole("ADMIN")
+                        .requestMatchers("POST", "/holidays/**").hasRole("ADMIN")
+                        .requestMatchers("PUT", "/holidays/**").hasRole("ADMIN")
+                        .requestMatchers("DELETE", "/holidays/**").hasRole("ADMIN")
+                        .requestMatchers("/admin/me").hasRole("ADMIN")
 
-                        // 나머지 요청은 인증 필요
-                        .anyRequest().authenticated()
+                        // 나머지 요청은 허용 (개발 중이므로)
+                        .anyRequest().permitAll()
                 );
 
         return http.build();
@@ -68,8 +74,9 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // 허용할 오리진
+        // 허용할 오리진 (더 구체적으로 설정)
         configuration.setAllowedOriginPatterns(Arrays.asList(
+                "http://localhost:5173",
                 "http://localhost:*",
                 "https://localhost:*"
         ));
@@ -82,14 +89,20 @@ public class SecurityConfig {
         // 허용할 헤더
         configuration.setAllowedHeaders(Arrays.asList("*"));
 
+        // 노출할 헤더
+        configuration.setExposedHeaders(Arrays.asList(
+                "Authorization", "X-Total-Count", "Content-Range"
+        ));
+
         // 인증 정보 포함 허용
         configuration.setAllowCredentials(true);
 
-        // 캐시 시간
+        // 캐시 시간 (1시간)
         configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/api/**", configuration);
+        // 모든 경로에 CORS 설정 적용
+        source.registerCorsConfiguration("/**", configuration);
 
         return source;
     }
