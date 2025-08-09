@@ -19,7 +19,6 @@ import java.util.Map;
  * 공휴일 관리 서비스
  */
 @Service
-@Transactional
 public class HolidayService {
 
     private final HolidayRepository holidayRepository;
@@ -38,7 +37,6 @@ public class HolidayService {
      * @param date 조회할 날짜
      * @return 공휴일 목록
      */
-    @Transactional(readOnly = true)
     public List<Holiday> getHolidaysByDate(LocalDate date) {
         return holidayRepository.findByHolidayDateOrderByHolidayTypeAsc(date);
     }
@@ -48,9 +46,74 @@ public class HolidayService {
      * @param year 연도
      * @return 공휴일 목록
      */
-    @Transactional(readOnly = true)
     public List<Holiday> getHolidaysByYear(int year) {
-        return holidayRepository.findByYear(year);
+        List<Holiday> holidays = holidayRepository.findByYear(year);
+
+        // 공휴일이 없으면 외부 API에서 가져오기 시도
+        if (holidays.isEmpty()) {
+            System.out.println(year + "년 공휴일이 없어서 API 동기화 시작...");
+
+            try {
+                // 먼저 외부 API 시도
+                syncHolidaysFromAPISync(year);
+                holidays = holidayRepository.findByYear(year);
+
+                // API에서 가져온 것이 없으면 기본 공휴일 추가
+                if (holidays.isEmpty()) {
+                    System.out.println("API에서 공휴일을 가져오지 못해 기본 공휴일 추가...");
+                    addDefaultKoreanHolidays(year);
+                    holidays = holidayRepository.findByYear(year);
+                }
+
+            } catch (Exception e) {
+                System.err.println("API 동기화 실패, 기본 공휴일 추가: " + e.getMessage());
+                // API 실패 시 기본 공휴일 추가
+                addDefaultKoreanHolidays(year);
+                holidays = holidayRepository.findByYear(year);
+            }
+        }
+
+        return holidays;
+    }
+
+    /**
+     * 외부 API에서 공휴일 정보 가져오기 (동기 방식)
+     * @param year 조회할 연도
+     */
+    private void syncHolidaysFromAPISync(int year) {
+        try {
+            // Nager.Date API 사용 (무료)
+            String url = "https://date.nager.at/api/v3/publicholidays/" + year + "/KR";
+
+            String response = restTemplate.getForObject(url, String.class);
+            JsonNode holidaysJson = objectMapper.readTree(response);
+
+            int addedCount = 0;
+            for (JsonNode holidayNode : holidaysJson) {
+                String name = holidayNode.get("localName").asText();
+                LocalDate date = LocalDate.parse(holidayNode.get("date").asText());
+
+                // 중복 체크
+                if (!holidayRepository.existsByNameAndHolidayDate(name, date)) {
+                    Holiday holiday = new Holiday();
+                    holiday.setName(name);
+                    holiday.setHolidayDate(date);
+                    holiday.setCountryCode("KR");
+                    holiday.setHolidayType(Holiday.HolidayType.PUBLIC);
+                    holiday.setDescription("API에서 자동 동기화된 공휴일");
+                    holiday.setColor("#FF6B6B");
+
+                    holidayRepository.save(holiday);
+                    addedCount++;
+                }
+            }
+
+            System.out.println(year + "년 공휴일 " + addedCount + "개가 추가되었습니다.");
+
+        } catch (Exception e) {
+            System.err.println("공휴일 API 동기화 실패: " + e.getMessage());
+            throw new RuntimeException("공휴일 API 동기화 실패", e);
+        }
     }
 
     /**
@@ -59,7 +122,6 @@ public class HolidayService {
      * @param month 월
      * @return 공휴일 목록
      */
-    @Transactional(readOnly = true)
     public List<Holiday> getHolidaysByMonth(int year, int month) {
         return holidayRepository.findByYearAndMonth(year, month);
     }
@@ -70,7 +132,6 @@ public class HolidayService {
      * @param endDate 종료 날짜
      * @return 공휴일 목록
      */
-    @Transactional(readOnly = true)
     public List<Holiday> getHolidaysByDateRange(LocalDate startDate, LocalDate endDate) {
         return holidayRepository.findByHolidayDateBetweenOrderByHolidayDateAsc(startDate, endDate);
     }
@@ -79,7 +140,6 @@ public class HolidayService {
      * 오늘의 공휴일 조회
      * @return 오늘의 공휴일 목록
      */
-    @Transactional(readOnly = true)
     public List<Holiday> getTodayHolidays() {
         return holidayRepository.findTodayHolidays();
     }
@@ -89,6 +149,7 @@ public class HolidayService {
      * @param holiday 추가할 공휴일
      * @return 저장된 공휴일
      */
+    @Transactional
     public Holiday addHoliday(Holiday holiday) {
         // 중복 체크
         if (holidayRepository.existsByNameAndHolidayDate(holiday.getName(), holiday.getHolidayDate())) {
@@ -103,6 +164,7 @@ public class HolidayService {
      * @param updatedHoliday 수정할 공휴일 정보
      * @return 수정된 공휴일
      */
+    @Transactional
     public Holiday updateHoliday(Long id, Holiday updatedHoliday) {
         Holiday existingHoliday = holidayRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("공휴일을 찾을 수 없습니다. ID: " + id));
@@ -121,6 +183,7 @@ public class HolidayService {
      * 공휴일 삭제
      * @param id 공휴일 ID
      */
+    @Transactional
     public void deleteHoliday(Long id) {
         Holiday holiday = holidayRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("공휴일을 찾을 수 없습니다. ID: " + id));
@@ -133,6 +196,7 @@ public class HolidayService {
      * @return 성공 여부
      */
     @Async
+    @Transactional
     public void syncHolidaysFromAPI(int year) {
         try {
             // Nager.Date API 사용 (무료)
@@ -173,7 +237,8 @@ public class HolidayService {
      * 기본 한국 공휴일 추가 (API 실패 시 폴백)
      * @param year 연도
      */
-    private void addDefaultKoreanHolidays(int year) {
+    @Transactional
+    public void addDefaultKoreanHolidays(int year) {
         Map<String, String> defaultHolidays = new HashMap<>();
         defaultHolidays.put("01-01", "신정");
         defaultHolidays.put("03-01", "삼일절");
@@ -212,7 +277,6 @@ public class HolidayService {
      * @param date 날짜
      * @return 공휴일 개수
      */
-    @Transactional(readOnly = true)
     public int getHolidayCountByDate(LocalDate date) {
         return getHolidaysByDate(date).size();
     }
@@ -222,7 +286,6 @@ public class HolidayService {
      * @param year 연도
      * @return 통계 정보
      */
-    @Transactional(readOnly = true)
     public Map<String, Object> getHolidayStatistics(int year) {
         Map<String, Object> stats = new HashMap<>();
 

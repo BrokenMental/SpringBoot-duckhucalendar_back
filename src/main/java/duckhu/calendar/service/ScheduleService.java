@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,7 +23,6 @@ import java.util.stream.Collectors;
  * 이미지, 링크, 추천 기능 등을 포함한 향상된 일정 관리 비즈니스 로직
  */
 @Service
-@Transactional
 public class ScheduleService {
 
     private final ScheduleRepository scheduleRepository;
@@ -47,19 +47,44 @@ public class ScheduleService {
      * @param sortBy 정렬 기준 (date, priority, views, created)
      * @return 일정 목록
      */
-    @Transactional(readOnly = true)
+    //@Transactional(readOnly = true) //읽기전용 메서드에서 supabase pooler와 spring boot의 @transactional 충돌
     public List<ScheduleResponseDto> getAllSchedules(String sortBy) {
-        Sort sort = createSort(sortBy);
-        List<Schedule> schedules = scheduleRepository.findAll(sort);
-        return schedules.stream()
-                .map(ScheduleResponseDto::from)
-                .collect(Collectors.toList());
+        int maxRetries = 3;
+        int retryCount = 0;
+
+        while (retryCount < maxRetries) {
+            try {
+                List<Schedule> schedules = scheduleRepository.findAll();
+                return schedules.stream()
+                        .map(ScheduleResponseDto::from)
+                        .collect(Collectors.toList());
+
+            } catch (Exception e) {
+                retryCount++;
+                System.err.println("데이터베이스 조회 실패 (시도 " + retryCount + "/" + maxRetries + "): " + e.getMessage());
+
+                if (retryCount >= maxRetries) {
+                    System.err.println("최대 재시도 횟수 초과. 에러를 던집니다.");
+                    throw new RuntimeException("일정 조회에 실패했습니다. 잠시 후 다시 시도해주세요.", e);
+                }
+
+                // 재시도 전 잠시 대기 (100ms씩 증가)
+                try {
+                    Thread.sleep(100 * retryCount);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("일정 조회 중 인터럽트가 발생했습니다.", ie);
+                }
+            }
+        }
+
+        // 이 코드에는 도달하지 않지만 컴파일 에러 방지
+        return new ArrayList<>();
     }
 
     /**
      * 기본 모든 일정 조회 (날짜순 정렬)
      */
-    @Transactional(readOnly = true)
     public List<ScheduleResponseDto> getAllSchedules() {
         return getAllSchedules("date");
     }
@@ -84,7 +109,6 @@ public class ScheduleService {
     /**
      * 조회수 증가 없이 일정 조회
      */
-    @Transactional(readOnly = true)
     public ScheduleResponseDto getScheduleById(Long id) {
         Schedule schedule = scheduleRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("일정을 찾을 수 없습니다. ID: " + id));
@@ -96,6 +120,7 @@ public class ScheduleService {
      * @param requestDto 일정 생성 요청 데이터
      * @return 생성된 일정 정보
      */
+    @Transactional
     public ScheduleResponseDto createSchedule(ScheduleRequestDto requestDto) {
         // 유효성 검사
         validateScheduleRequest(requestDto);
@@ -124,6 +149,7 @@ public class ScheduleService {
      * @param requestDto 수정 요청 데이터
      * @return 수정된 일정 정보
      */
+    @Transactional
     public ScheduleResponseDto updateSchedule(Long id, ScheduleRequestDto requestDto) {
         // 기존 일정 조회
         Schedule existingSchedule = scheduleRepository.findById(id)
@@ -144,6 +170,7 @@ public class ScheduleService {
      * 일정 삭제
      * @param id 삭제할 일정 ID
      */
+    @Transactional
     public void deleteSchedule(Long id) {
         Schedule schedule = scheduleRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("삭제할 일정을 찾을 수 없습니다. ID: " + id));
@@ -156,7 +183,6 @@ public class ScheduleService {
      * @param date 조회할 날짜
      * @return 해당 날짜의 일정 목록
      */
-    @Transactional(readOnly = true)
     public List<ScheduleResponseDto> getSchedulesByDate(LocalDate date) {
         List<Schedule> schedules = scheduleRepository.findSchedulesByDate(date);
         return schedules.stream()
@@ -170,7 +196,6 @@ public class ScheduleService {
      * @param endDate 종료 날짜
      * @return 해당 범위의 일정 목록
      */
-    @Transactional(readOnly = true)
     public List<ScheduleResponseDto> getSchedulesByDateRange(LocalDate startDate, LocalDate endDate) {
         List<Schedule> schedules = scheduleRepository.findSchedulesByDateRange(startDate, endDate);
         return schedules.stream()
@@ -184,7 +209,6 @@ public class ScheduleService {
      * @param month 월 (1-12)
      * @return 해당 월의 일정 목록
      */
-    @Transactional(readOnly = true)
     public List<ScheduleResponseDto> getSchedulesByMonth(int year, int month) {
         LocalDate monthStart = LocalDate.of(year, month, 1);
         LocalDate monthEnd = monthStart.withDayOfMonth(monthStart.lengthOfMonth());
@@ -201,7 +225,6 @@ public class ScheduleService {
      * @param category 카테고리 필터
      * @return 검색된 일정 목록
      */
-    @Transactional(readOnly = true)
     public List<ScheduleResponseDto> searchSchedules(String title, String category) {
         List<Schedule> schedules;
 
@@ -228,7 +251,6 @@ public class ScheduleService {
     /**
      * 제목으로만 검색 (기존 호환성)
      */
-    @Transactional(readOnly = true)
     public List<ScheduleResponseDto> searchSchedulesByTitle(String title) {
         return searchSchedules(title, null);
     }
@@ -237,7 +259,6 @@ public class ScheduleService {
      * 오늘의 일정 조회
      * @return 오늘의 일정 목록
      */
-    @Transactional(readOnly = true)
     public List<ScheduleResponseDto> getTodaySchedules() {
         return getSchedulesByDate(LocalDate.now());
     }
@@ -247,7 +268,6 @@ public class ScheduleService {
      * @param days 몇 일 후까지 조회할지
      * @return 다가오는 일정 목록
      */
-    @Transactional(readOnly = true)
     public List<ScheduleResponseDto> getUpcomingSchedules(int days) {
         LocalDate today = LocalDate.now();
         LocalDate futureDate = today.plusDays(days);
@@ -261,6 +281,7 @@ public class ScheduleService {
      * @param isFeatured 추천 여부
      * @return 업데이트된 일정 정보
      */
+    @Transactional
     public ScheduleResponseDto toggleFeatured(Long id, Boolean isFeatured) {
         Schedule schedule = scheduleRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("일정을 찾을 수 없습니다. ID: " + id));
@@ -275,6 +296,7 @@ public class ScheduleService {
      * 조회수 증가
      * @param id 일정 ID
      */
+    @Transactional
     public void incrementViewCount(Long id) {
         Schedule schedule = scheduleRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("일정을 찾을 수 없습니다. ID: " + id));
@@ -287,7 +309,6 @@ public class ScheduleService {
      * 추천 이벤트 목록 조회
      * @return 추천 이벤트 목록
      */
-    @Transactional(readOnly = true)
     public List<ScheduleResponseDto> getFeaturedSchedules() {
         List<Schedule> schedules = scheduleRepository.findByIsFeaturedTrueOrderByStartDateAsc();
         return schedules.stream()
@@ -300,7 +321,6 @@ public class ScheduleService {
      * @param limit 조회할 개수
      * @return 추천 이벤트 목록
      */
-    @Transactional(readOnly = true)
     public List<ScheduleResponseDto> getFeaturedSchedules(int limit) {
         Pageable pageable = PageRequest.of(0, limit, Sort.by("startDate").ascending());
         List<Schedule> schedules = scheduleRepository.findByIsFeaturedTrueOrderByStartDateAsc(pageable);
@@ -314,7 +334,6 @@ public class ScheduleService {
      * @param limit 조회할 개수
      * @return 인기 이벤트 목록
      */
-    @Transactional(readOnly = true)
     public List<ScheduleResponseDto> getPopularSchedules(int limit) {
         Pageable pageable = PageRequest.of(0, limit, Sort.by("viewCount").descending());
         List<Schedule> schedules = scheduleRepository.findAllByOrderByViewCountDesc(pageable);
@@ -328,7 +347,6 @@ public class ScheduleService {
      * @param limit 조회할 개수
      * @return 최근 이벤트 목록
      */
-    @Transactional(readOnly = true)
     public List<ScheduleResponseDto> getRecentSchedules(int limit) {
         Pageable pageable = PageRequest.of(0, limit, Sort.by("createdAt").descending());
         List<Schedule> schedules = scheduleRepository.findAllByOrderByCreatedAtDesc(pageable);
@@ -341,7 +359,6 @@ public class ScheduleService {
      * 일정 통계 조회
      * @return 통계 정보 맵
      */
-    @Transactional(readOnly = true)
     public Map<String, Object> getScheduleStatistics() {
         Map<String, Object> stats = new HashMap<>();
 

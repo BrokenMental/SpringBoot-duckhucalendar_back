@@ -1,65 +1,96 @@
 package duckhu.calendar.controller;
 
+import duckhu.calendar.entity.EventRequest;
+import duckhu.calendar.service.EventRequestService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
-/**
- * 이벤트 요청 컨트롤러
- */
 @RestController
-@RequestMapping("/event-requests")
-@CrossOrigin(origins = "http://localhost:5173", allowCredentials = "true")
+@RequestMapping("/api/event-requests")
+@CrossOrigin(origins = "*")
 public class EventRequestController {
+
+    @Autowired
+    private EventRequestService eventRequestService;
 
     /**
      * 이벤트 요청 제출
-     * POST /api/event-requests
      */
-    @PostMapping
-    public ResponseEntity<?> submitEventRequest(@RequestBody Map<String, Object> requestData) {
+    @PostMapping("/submit")
+    public ResponseEntity<?> submitEventRequest(@RequestBody EventRequest eventRequest) {
         try {
-            // TODO: 실제 이벤트 요청 처리 로직 구현
-            // 현재는 기본 응답만 반환
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("message", "이벤트 요청이 성공적으로 제출되었습니다.");
-            response.put("requestId", System.currentTimeMillis()); // 임시 ID
-            response.put("status", "PENDING");
-
-            return ResponseEntity.ok(response);
+            EventRequest savedRequest = eventRequestService.submitRequest(eventRequest);
+            return ResponseEntity.ok(savedRequest);
         } catch (Exception e) {
-            return createErrorResponse("이벤트 요청 제출에 실패했습니다: " + e.getMessage());
+            return ResponseEntity.badRequest().body("요청 제출 실패: " + e.getMessage());
         }
     }
 
     /**
-     * 이벤트 요청 목록 조회 (관리자 전용)
-     * GET /api/event-requests
+     * 이메일 인증 코드 전송
      */
-    @GetMapping
-    public ResponseEntity<?> getEventRequests(@RequestParam(required = false) String status) {
+    @PostMapping("/send-verification")
+    public ResponseEntity<?> sendVerificationCode(@RequestBody Map<String, String> request) {
         try {
-            // TODO: 실제 이벤트 요청 목록 조회 로직 구현
+            String email = request.get("email");
+            if (email == null || email.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body("이메일을 입력해주세요.");
+            }
 
-            Map<String, Object> response = new HashMap<>();
-            response.put("requests", new java.util.ArrayList<>()); // 빈 목록 반환
-            response.put("total", 0);
-            response.put("status", status);
-
-            return ResponseEntity.ok(response);
+            eventRequestService.sendVerificationCode(email);
+            return ResponseEntity.ok("인증 코드가 전송되었습니다.");
         } catch (Exception e) {
-            return createErrorResponse("이벤트 요청 목록 조회에 실패했습니다: " + e.getMessage());
+            return ResponseEntity.badRequest().body("인증 코드 전송 실패: " + e.getMessage());
         }
     }
 
-    private ResponseEntity<?> createErrorResponse(String message) {
-        Map<String, Object> errorResponse = new HashMap<>();
-        errorResponse.put("error", true);
-        errorResponse.put("message", message);
-        errorResponse.put("timestamp", java.time.LocalDateTime.now().toString());
-        return ResponseEntity.badRequest().body(errorResponse);
+    /**
+     * 이메일 인증 확인
+     */
+    @PostMapping("/verify-email")
+    public ResponseEntity<?> verifyEmail(@RequestBody Map<String, String> request) {
+        try {
+            String email = request.get("email");
+            String code = request.get("code");
+
+            if (email == null || code == null) {
+                return ResponseEntity.badRequest().body("이메일과 인증 코드를 모두 입력해주세요.");
+            }
+
+            boolean isValid = eventRequestService.verifyEmail(email, code);
+            if (isValid) {
+                return ResponseEntity.ok("인증 성공");
+            } else {
+                return ResponseEntity.badRequest().body("잘못된 인증 코드입니다.");
+            }
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("인증 실패: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 관리자용 - 요청 목록 조회
+     */
+    @GetMapping("/admin/list")
+    public ResponseEntity<List<EventRequest>> getEventRequests() {
+        List<EventRequest> requests = eventRequestService.getAllRequests();
+        return ResponseEntity.ok(requests);
+    }
+
+    /**
+     * 관리자용 - 요청 승인/거절
+     */
+    @PutMapping("/admin/{id}/status")
+    public ResponseEntity<?> updateRequestStatus(@PathVariable Long id, @RequestParam String status) {
+        try {
+            eventRequestService.updateRequestStatus(id, status);
+            return ResponseEntity.ok("상태가 업데이트되었습니다.");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("상태 업데이트 실패: " + e.getMessage());
+        }
     }
 }

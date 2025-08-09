@@ -31,12 +31,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     // 인증이 필요 없는 경로들
     private static final List<String> EXCLUDED_PATHS = Arrays.asList(
-            "/admin/request-temp-password",
-            "/admin/login",
-            "/schedules",
-            "/holidays",
-            "/event-requests",
-            "/email-subscriptions"
+            "/api/admin/request-temp-password",
+            "/api/admin/login",
+            "/api/schedules",
+            "/api/holidays",
+            "/api/event-requests",
+            "/api/email-subscriptions"
     );
 
     @Override
@@ -58,8 +58,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
-        // POST /schedules/*/view 요청은 인증 없이 통과
-        if ("POST".equals(method) && requestPath.matches(".*/schedules/.+/view")) {
+        // POST /api/schedules/*/view 요청은 인증 없이 통과
+        if ("POST".equals(method) && requestPath.matches(".*/api/schedules/.+/view")) {
             filterChain.doFilter(request, response);
             return;
         }

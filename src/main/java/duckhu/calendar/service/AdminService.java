@@ -17,8 +17,11 @@ import java.util.Map;
 @Service
 public class AdminService {
 
-    @Value("${admin.emails:admin@example.com,manager@example.com}")
-    private String[] adminEmails;
+    @Value("${admin.emails}")
+    private String adminEmail;
+
+    @Value("${app.dev.mode:false}")
+    private boolean devMode;
 
     @Autowired
     private JavaMailSender mailSender;
@@ -30,12 +33,7 @@ public class AdminService {
      * 관리자 이메일인지 확인
      */
     public boolean isValidAdmin(String email) {
-        for (String adminEmail : adminEmails) {
-            if (adminEmail.trim().equalsIgnoreCase(email.trim())) {
-                return true;
-            }
-        }
-        return false;
+        return adminEmail.trim().equalsIgnoreCase(email.trim());
     }
 
     /**
@@ -68,15 +66,19 @@ public class AdminService {
      * 임시 비밀번호 검증
      */
     public boolean validateTempPassword(String email, String password) {
+        if (!isValidAdmin(email)) {
+            throw new RuntimeException("관리자 이메일이 아닙니다.");
+        }
+
         TempPassword tempPassword = tempPasswords.get(email);
 
         if (tempPassword == null) {
-            return false;
+            throw new RuntimeException("임시 비밀번호를 먼저 요청해주세요.");
         }
 
         if (tempPassword.isExpired()) {
             tempPasswords.remove(email); // 만료된 비밀번호 제거
-            return false;
+            throw new RuntimeException("임시 비밀번호가 만료되었습니다.");
         }
 
         boolean isValid = tempPassword.password.equals(password);
@@ -101,6 +103,15 @@ public class AdminService {
      * 이메일 발송
      */
     private void sendEmail(String toEmail, String tempPassword) {
+        if (devMode) {
+            // 개발 모드에서는 콘솔에만 출력
+            System.out.println("=== 개발 모드: 임시 비밀번호 ===");
+            System.out.println("이메일: " + toEmail);
+            System.out.println("임시 비밀번호: " + tempPassword);
+            System.out.println("==============================");
+            return;
+        }
+
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(toEmail);
         message.setSubject("[캘린더 관리자] 임시 비밀번호 발송");
