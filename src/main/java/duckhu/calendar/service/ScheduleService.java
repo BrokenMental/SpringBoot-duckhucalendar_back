@@ -353,36 +353,12 @@ public class ScheduleService {
         stats.put("featuredSchedules", featuredSchedules);
         stats.put("todaySchedules", todaySchedules);
 
-        // 우선순위별 통계
-        List<Object[]> priorityStats = scheduleRepository.countByPriority();
-        Map<String, Long> priorityMap = new HashMap<>();
-        for (Object[] row : priorityStats) {
-            Integer priority = (Integer) row[0];
-            Long count = (Long) row[1];
-            String priorityText = switch (priority) {
-                case 1 -> "높음";
-                case 2 -> "중간";
-                case 3 -> "낮음";
-                default -> "기타";
-            };
-            priorityMap.put(priorityText, count);
-        }
-        stats.put("priorityStats", priorityMap);
-
-        // 월별 통계 (최근 6개월)
-        Map<String, Long> monthlyStats = new HashMap<>();
-        LocalDate startMonth = LocalDate.now().minusMonths(5).withDayOfMonth(1);
-        for (int i = 0; i < 6; i++) {
-            LocalDate monthStart = startMonth.plusMonths(i);
-            LocalDate monthEnd = monthStart.withDayOfMonth(monthStart.lengthOfMonth());
-            long count = scheduleRepository.countByDateRange(monthStart, monthEnd);
-            monthlyStats.put(monthStart.getMonth().toString(), count);
-        }
-        stats.put("monthlyStats", monthlyStats);
-
         // 조회수 통계
         Long totalViews = scheduleRepository.sumAllViewCounts();
         stats.put("totalViews", totalViews != null ? totalViews : 0);
+
+        // 구독자 수 (나중에 구현 시 추가)
+        stats.put("totalSubscribers", 0);
 
         return stats;
     }
