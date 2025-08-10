@@ -39,7 +39,7 @@ public class SecurityConfig {
                 .addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class)
 
                 // 요청 권한 설정
-                .authorizeHttpRequests(authz -> authz
+                .authorizeHttpRequests(auth -> auth
                         // 인증 없이 접근 가능한 엔드포인트 (경로 수정)
                         .requestMatchers("GET", "/schedules", "/schedules/**").permitAll()
                         .requestMatchers("POST", "/schedules/*/view").permitAll()

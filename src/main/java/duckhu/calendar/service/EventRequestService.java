@@ -1,10 +1,15 @@
 package duckhu.calendar.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import duckhu.calendar.dto.ScheduleRequestDto;
 import duckhu.calendar.entity.EventRequest;
 import duckhu.calendar.enums.RequestStatus;
 import duckhu.calendar.repository.EventRequestRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -13,19 +18,36 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class EventRequestService {
 
+    @Autowired
+    private EventRequestRepository eventRequestRepository;
+
+    @Autowired
+    private EmailService emailService;
+
+    private final ObjectMapper objectMapper;
     // 이메일 인증 코드 임시 저장 (실제로는 Redis 사용 권장)
     private final ConcurrentHashMap<String, VerificationData> verificationCodes = new ConcurrentHashMap<>();
     @Autowired
-    private EventRequestRepository eventRequestRepository;
-    @Autowired
-    private EmailService emailService;
+    private ScheduleService scheduleService;
+
+    public EventRequestService() {
+        this.objectMapper = new ObjectMapper();
+        this.objectMapper.registerModule(new JavaTimeModule());
+        this.objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+    }
 
     /**
      * 이벤트 요청 제출
      */
+    @Transactional
     public EventRequest submitRequest(EventRequest eventRequest) {
         eventRequest.setStatus(RequestStatus.PENDING);
-        return eventRequestRepository.save(eventRequest);
+        EventRequest saved = eventRequestRepository.save(eventRequest);
+
+        // 관리자에게 알림 이메일 발송 (선택사항)
+        notifyAdminsAboutNewRequest(saved);
+
+        return saved;
     }
 
     /**
@@ -38,8 +60,29 @@ public class EventRequestService {
         LocalDateTime expiryTime = LocalDateTime.now().plusMinutes(5);
         verificationCodes.put(email, new VerificationData(code, expiryTime));
 
-        // 만료된 코드들 정리 (옵션)
+        // 만료된 코드들 정리
         cleanExpiredCodes();
+    }
+
+    /**
+     * 요청 상태 업데이트 (관리자용)
+     */
+    @Transactional
+    public void updateRequestStatus(Long requestId, String statusStr) {
+        EventRequest request = eventRequestRepository.findById(requestId)
+                .orElseThrow(() -> new RuntimeException("요청을 찾을 수 없습니다."));
+
+        RequestStatus newStatus = RequestStatus.valueOf(statusStr.toUpperCase());
+        request.setStatus(newStatus);
+        eventRequestRepository.save(request);
+
+        // 승인된 경우 실제 이벤트 생성
+        if (newStatus == RequestStatus.APPROVED && "ADD".equals(request.getRequestType())) {
+            createScheduleFromRequest(request);
+        }
+
+        // 요청자에게 결과 이메일 발송
+        sendStatusUpdateEmail(request);
     }
 
     /**
@@ -73,15 +116,22 @@ public class EventRequestService {
     }
 
     /**
-     * 요청 상태 업데이트 (관리자용)
+     * 요청으로부터 일정 생성
      */
-    public void updateRequestStatus(Long requestId, String statusStr) {
-        EventRequest request = eventRequestRepository.findById(requestId)
-                .orElseThrow(() -> new RuntimeException("요청을 찾을 수 없습니다."));
+    private void createScheduleFromRequest(EventRequest request) {
+        try {
+            // JSON 문자열을 ScheduleRequestDto로 변환
+            ScheduleRequestDto scheduleDto = objectMapper.readValue(
+                    request.getEventData(),
+                    ScheduleRequestDto.class
+            );
 
-        RequestStatus status = RequestStatus.valueOf(statusStr.toUpperCase());
-        request.setStatus(status);
-        eventRequestRepository.save(request);
+            // 일정 생성
+            scheduleService.createSchedule(scheduleDto);
+
+        } catch (Exception e) {
+            throw new RuntimeException("일정 생성 실패: " + e.getMessage());
+        }
     }
 
     /**
@@ -90,7 +140,29 @@ public class EventRequestService {
     private void cleanExpiredCodes() {
         LocalDateTime now = LocalDateTime.now();
         verificationCodes.entrySet().removeIf(entry ->
-                now.isAfter(entry.getValue().expiryTime));
+                now.isAfter(entry.getValue().expiryTime)
+        );
+    }
+
+    /**
+     * 관리자에게 새 요청 알림
+     */
+    private void notifyAdminsAboutNewRequest(EventRequest request) {
+        // TODO: 관리자 이메일 목록 가져와서 알림 발송
+        System.out.println("새 이벤트 요청: " + request.getId());
+    }
+
+    /**
+     * 요청 상태 변경 이메일 발송
+     */
+    private void sendStatusUpdateEmail(EventRequest request) {
+        String subject = "이벤트 요청 처리 결과";
+        String body = String.format(
+                "안녕하세요,\n\n귀하의 이벤트 요청이 %s되었습니다.\n\n감사합니다.",
+                request.getStatus() == RequestStatus.APPROVED ? "승인" : "거절"
+        );
+
+        emailService.sendEmail(request.getRequesterEmail(), subject, body);
     }
 
     /**

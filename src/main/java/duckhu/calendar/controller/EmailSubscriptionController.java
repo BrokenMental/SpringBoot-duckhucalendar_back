@@ -1,9 +1,15 @@
 package duckhu.calendar.controller;
 
+import duckhu.calendar.entity.EmailSubscription;
+import duckhu.calendar.service.EmailSubscriptionService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -14,6 +20,9 @@ import java.util.Map;
 @CrossOrigin(origins = "http://localhost:5173", allowCredentials = "true")
 public class EmailSubscriptionController {
 
+    @Autowired
+    private EmailSubscriptionService subscriptionService;
+
     /**
      * 이메일 구독 신청
      * POST /api/email-subscriptions
@@ -22,23 +31,30 @@ public class EmailSubscriptionController {
     public ResponseEntity<?> subscribe(@RequestBody Map<String, Object> subscriptionData) {
         try {
             String email = (String) subscriptionData.get("email");
+            String name = (String) subscriptionData.get("name");
+
             if (email == null || email.trim().isEmpty()) {
-                return createErrorResponse("이메일을 입력해주세요.");
+                return createErrorResponse("이메일을 입력해주세요.", HttpStatus.BAD_REQUEST);
             }
 
-            // TODO: 실제 구독 처리 로직 구현
-            // - 이메일 중복 확인
-            // - 데이터베이스에 저장
-            // - 구독 확인 이메일 발송
+            EmailSubscription subscription = subscriptionService.subscribe(email, name);
 
             Map<String, Object> response = new HashMap<>();
             response.put("message", "이메일 구독이 완료되었습니다.");
-            response.put("email", email);
-            response.put("subscriptionDate", java.time.LocalDateTime.now().toString());
+            response.put("email", subscription.getEmail());
+            response.put("subscriptionId", subscription.getId());
+            response.put("subscribedAt", subscription.getSubscribedAt());
 
             return ResponseEntity.ok(response);
+
+        } catch (RuntimeException e) {
+            if (e.getMessage().contains("이미 구독")) {
+                return createErrorResponse(e.getMessage(), HttpStatus.CONFLICT);
+            }
+            return createErrorResponse(e.getMessage(), HttpStatus.BAD_REQUEST);
         } catch (Exception e) {
-            return createErrorResponse("구독 신청에 실패했습니다: " + e.getMessage());
+            return createErrorResponse("구독 신청에 실패했습니다: " + e.getMessage(),
+                    HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -49,15 +65,19 @@ public class EmailSubscriptionController {
     @PostMapping("/unsubscribe/{token}")
     public ResponseEntity<?> unsubscribe(@PathVariable String token) {
         try {
-            // TODO: 실제 구독 해지 로직 구현
+            subscriptionService.unsubscribe(token);
 
             Map<String, Object> response = new HashMap<>();
             response.put("message", "구독이 해지되었습니다.");
-            response.put("token", token);
+            response.put("success", true);
 
             return ResponseEntity.ok(response);
+
+        } catch (RuntimeException e) {
+            return createErrorResponse(e.getMessage(), HttpStatus.NOT_FOUND);
         } catch (Exception e) {
-            return createErrorResponse("구독 해지에 실패했습니다: " + e.getMessage());
+            return createErrorResponse("구독 해지에 실패했습니다: " + e.getMessage(),
+                    HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -66,25 +86,88 @@ public class EmailSubscriptionController {
      * GET /api/email-subscriptions
      */
     @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> getSubscribers() {
         try {
-            // TODO: 실제 구독자 목록 조회 로직 구현
+            List<EmailSubscription> subscribers = subscriptionService.getAllSubscribers();
 
             Map<String, Object> response = new HashMap<>();
-            response.put("subscribers", new java.util.ArrayList<>()); // 빈 목록 반환
-            response.put("total", 0);
+            response.put("subscribers", subscribers);
+            response.put("total", subscribers.size());
+            response.put("active", subscribers.stream()
+                    .filter(EmailSubscription::getIsActive).count());
 
             return ResponseEntity.ok(response);
+
         } catch (Exception e) {
-            return createErrorResponse("구독자 목록 조회에 실패했습니다: " + e.getMessage());
+            return createErrorResponse("구독자 목록 조회에 실패했습니다: " + e.getMessage(),
+                    HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
-    private ResponseEntity<?> createErrorResponse(String message) {
+    /**
+     * 구독자 삭제 (관리자 전용)
+     * DELETE /api/email-subscriptions/{id}
+     */
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> deleteSubscriber(@PathVariable Long id) {
+        try {
+            subscriptionService.deleteSubscriber(id);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "구독자가 삭제되었습니다.");
+            response.put("deletedId", id);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            return createErrorResponse("구독자 삭제에 실패했습니다: " + e.getMessage(),
+                    HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * 구독자 상태 변경 (관리자 전용)
+     * PATCH /api/email-subscriptions/{id}/status
+     */
+    @PatchMapping("/{id}/status")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> updateSubscriberStatus(
+            @PathVariable Long id,
+            @RequestBody Map<String, Boolean> request) {
+        try {
+            Boolean isActive = request.get("isActive");
+            if (isActive == null) {
+                return createErrorResponse("isActive 값이 필요합니다.", HttpStatus.BAD_REQUEST);
+            }
+
+            subscriptionService.updateSubscriberStatus(id, isActive);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", isActive ? "구독자가 활성화되었습니다." : "구독자가 비활성화되었습니다.");
+            response.put("subscriberId", id);
+            response.put("isActive", isActive);
+
+            return ResponseEntity.ok(response);
+
+        } catch (RuntimeException e) {
+            return createErrorResponse(e.getMessage(), HttpStatus.NOT_FOUND);
+        } catch (Exception e) {
+            return createErrorResponse("구독자 상태 변경에 실패했습니다: " + e.getMessage(),
+                    HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * 에러 응답 생성
+     */
+    private ResponseEntity<?> createErrorResponse(String message, HttpStatus status) {
         Map<String, Object> errorResponse = new HashMap<>();
         errorResponse.put("error", true);
         errorResponse.put("message", message);
         errorResponse.put("timestamp", java.time.LocalDateTime.now().toString());
-        return ResponseEntity.badRequest().body(errorResponse);
+        errorResponse.put("status", status.value());
+        return ResponseEntity.status(status).body(errorResponse);
     }
 }

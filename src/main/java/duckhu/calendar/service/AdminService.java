@@ -17,7 +17,7 @@ import java.util.Map;
 @Service
 public class AdminService {
 
-    @Value("${admin.emails}")
+    @Value("${app.admin.emails}")
     private String adminEmail;
 
     @Value("${app.dev.mode:false}")

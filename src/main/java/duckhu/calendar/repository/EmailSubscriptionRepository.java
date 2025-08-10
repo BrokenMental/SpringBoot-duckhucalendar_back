@@ -10,11 +10,15 @@ import java.util.Optional;
 @Repository
 public interface EmailSubscriptionRepository extends JpaRepository<EmailSubscription, Long> {
 
+    boolean existsByEmail(String email);
+
     Optional<EmailSubscription> findByEmail(String email);
 
     Optional<EmailSubscription> findByUnsubscribeToken(String token);
 
     List<EmailSubscription> findByIsActiveTrue();
 
-    boolean existsByEmail(String email);
+    List<EmailSubscription> findAllByOrderBySubscribedAtDesc();
+
+    long countByIsActiveTrue();
 }

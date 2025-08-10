@@ -7,7 +7,8 @@ public enum RequestStatus {
     PENDING("대기중"),
     APPROVED("승인됨"),
     REJECTED("거절됨"),
-    PROCESSING("처리중");
+    PROCESSING("처리중"),
+    CANCELLED("취소됨");;
 
     private final String description;
 

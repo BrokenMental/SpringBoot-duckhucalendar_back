@@ -37,16 +37,21 @@ spring:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
 
   mail:
-    host: smtp.gmail.com
+    host: smtp.gmail.com  # Gmail SMTP 서버 (다른 이메일 서비스 사용 가능)
     port: 587
-    username: ${MAIL_USERNAME:nukabyte@gmail.com}
-    password: ${MAIL_PASSWORD:your-app-password} #google 보안에 2단계 인증 활성화, 앱 비밀번호 생성해서 변경
+    username: nukabyte@gmail.com
+    password: obbgskhpxaasddwe
     properties:
       mail:
         smtp:
           auth: true
           starttls:
             enable: true
+            required: true
+          timeout: 5000
+          connectiontimeout: 5000
+          writetimeout: 5000
+    default-encoding: UTF-8
 
 # JWT 설정
 jwt:
@@ -85,9 +90,11 @@ management:
     health:
       show-details: always
 
-admin:
-  emails: nukabyte@gmail.com
-
 app:
+  name: 이벤트 캘린더
+  admin:
+    email: nukabyte@gmail.com  # 관리자 이메일
+  mail:
+    from: noreply@duckhu-calendar.com  # 발신자 이메일
   dev:
     mode: true

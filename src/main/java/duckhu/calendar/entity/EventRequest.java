@@ -25,7 +25,7 @@ public class EventRequest {
     @Column(nullable = false)
     private String requesterEmail;
 
-    @Column(columnDefinition = "JSON")
+    @Column(columnDefinition = "TEXT")
     private String eventData; // 요청된 이벤트 데이터
 
     @Enumerated(EnumType.STRING)
