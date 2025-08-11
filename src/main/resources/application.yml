@@ -36,23 +36,6 @@ spring:
             non_contextual_creation: true
     database-platform: org.hibernate.dialect.PostgreSQLDialect
 
-  mail:
-    host: smtp.gmail.com  # Gmail SMTP 서버 (다른 이메일 서비스 사용 가능)
-    port: 587
-    username: nukabyte@gmail.com
-    password: obbgskhpxaasddwe
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
-            required: true
-          timeout: 5000
-          connectiontimeout: 5000
-          writetimeout: 5000
-    default-encoding: UTF-8
-
 # JWT 설정
 jwt:
   secret: duckhu-calendar-jwt-secret-key-must-be-at-least-32-characters-long-for-security
@@ -89,12 +72,3 @@ management:
   endpoint:
     health:
       show-details: always
-
-app:
-  name: 이벤트 캘린더
-  admin:
-    email: nukabyte@gmail.com  # 관리자 이메일
-  mail:
-    from: noreply@duckhu-calendar.com  # 발신자 이메일
-  dev:
-    mode: true
