@@ -100,10 +100,10 @@ public class EmailSubscriptionService {
      * 환영 이메일 발송
      */
     private void sendWelcomeEmail(EmailSubscription subscription) {
-        String subject = "이벤트 캘린더 구독을 환영합니다!";
+        String subject = "더쿠 캘린더 구독을 환영합니다!";
         String body = String.format(
                 "안녕하세요 %s님,\n\n" +
-                        "이벤트 캘린더 이메일 알림 구독을 시작하셨습니다.\n" +
+                        "더쿠 캘린더 이메일 알림 구독을 시작하셨습니다.\n" +
                         "매주 일요일 오전 9시에 다가오는 이벤트 정보를 받아보실 수 있습니다.\n\n" +
                         "구독을 해지하시려면 다음 링크를 클릭하세요:\n" +
                         "http://localhost:8080/unsubscribe/%s\n\n" +
@@ -120,7 +120,7 @@ public class EmailSubscriptionService {
      */
     private void sendUnsubscribeConfirmation(EmailSubscription subscription) {
         String subject = "구독이 해지되었습니다";
-        String body = "이벤트 캘린더 이메일 알림 구독이 해지되었습니다.\n" +
+        String body = "더쿠 캘린더 이메일 알림 구독이 해지되었습니다.\n" +
                 "다시 구독을 원하시면 언제든지 웹사이트를 방문해주세요.";
 
         emailService.sendEmail(subscription.getEmail(), subject, body);
