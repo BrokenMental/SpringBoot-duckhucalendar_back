@@ -205,7 +205,8 @@ public class Holiday {
         TRADITIONAL("전통 명절"),   // 전통 명절
         RELIGIOUS("종교 기념일"),   // 종교 기념일
         MEMORIAL("기념일"),         // 기념일
-        SUBSTITUTE("대체공휴일");   // 대체공휴일
+        SUBSTITUTE("대체공휴일"),   // 대체공휴일
+        ANNIVERSARY("기타");        // 기타 기념일
 
         private final String description;
 

@@ -348,8 +348,8 @@ public class ScheduleService {
      * @return 최근 이벤트 목록
      */
     public List<ScheduleResponseDto> getRecentSchedules(int limit) {
-        Pageable pageable = PageRequest.of(0, limit, Sort.by("createdAt").descending());
-        List<Schedule> schedules = scheduleRepository.findAllByOrderByCreatedAtDesc(pageable);
+        Pageable pageable = PageRequest.of(0, limit);
+        List<Schedule> schedules = scheduleRepository.findRecentSchedules(pageable);
         return schedules.stream()
                 .map(ScheduleResponseDto::from)
                 .collect(Collectors.toList());

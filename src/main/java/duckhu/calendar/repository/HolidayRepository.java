@@ -10,96 +10,102 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * 공휴일 Repository
+ * 공휴일/국경일 리포지토리
  */
 @Repository
 public interface HolidayRepository extends JpaRepository<Holiday, Long> {
 
     /**
-     * 특정 날짜의 공휴일 조회
-     * @param date 조회할 날짜
-     * @return 해당 날짜의 공휴일 목록
+     * 날짜 범위별 공휴일 조회 (날짜순, 타입순 정렬)
      */
-    List<Holiday> findByHolidayDateOrderByHolidayTypeAsc(LocalDate date);
+    List<Holiday> findByHolidayDateBetweenAndCountryCodeOrderByHolidayDateAscHolidayTypeAsc(
+            LocalDate startDate, LocalDate endDate, String countryCode);
 
     /**
-     * 특정 날짜 범위의 공휴일 조회
-     * @param startDate 시작 날짜
-     * @param endDate 종료 날짜
-     * @return 해당 범위의 공휴일 목록
+     * 특정 날짜의 공휴일 조회 (타입순 정렬 - 국경일 우선)
      */
-    List<Holiday> findByHolidayDateBetweenOrderByHolidayDateAsc(LocalDate startDate, LocalDate endDate);
+    List<Holiday> findByHolidayDateAndCountryCodeOrderByHolidayTypeAsc(
+            LocalDate holidayDate, String countryCode);
 
     /**
-     * 특정 연도의 공휴일 조회
-     * @param year 연도
-     * @return 해당 연도의 공휴일 목록
+     * 연도별 공휴일 조회
      */
-    @Query("SELECT h FROM Holiday h WHERE YEAR(h.holidayDate) = :year ORDER BY h.holidayDate ASC")
-    List<Holiday> findByYear(@Param("year") int year);
+    @Query("SELECT h FROM Holiday h WHERE YEAR(h.holidayDate) = :year AND h.countryCode = :countryCode ORDER BY h.holidayDate ASC, h.holidayType ASC")
+    List<Holiday> findByYearAndCountryCode(@Param("year") int year, @Param("countryCode") String countryCode);
 
     /**
-     * 특정 월의 공휴일 조회
-     * @param year 연도
-     * @param month 월
-     * @return 해당 월의 공휴일 목록
+     * 월별 공휴일 조회
      */
-    @Query("SELECT h FROM Holiday h WHERE YEAR(h.holidayDate) = :year AND MONTH(h.holidayDate) = :month ORDER BY h.holidayDate ASC")
-    List<Holiday> findByYearAndMonth(@Param("year") int year, @Param("month") int month);
-
-    /**
-     * 국가별 공휴일 조회
-     * @param countryCode 국가 코드
-     * @param year 연도
-     * @return 해당 국가의 공휴일 목록
-     */
-    @Query("SELECT h FROM Holiday h WHERE h.countryCode = :countryCode AND YEAR(h.holidayDate) = :year ORDER BY h.holidayDate ASC")
-    List<Holiday> findByCountryCodeAndYear(@Param("countryCode") String countryCode, @Param("year") int year);
+    @Query("SELECT h FROM Holiday h WHERE YEAR(h.holidayDate) = :year AND MONTH(h.holidayDate) = :month AND h.countryCode = :countryCode ORDER BY h.holidayDate ASC, h.holidayType ASC")
+    List<Holiday> findByYearAndMonthAndCountryCode(
+            @Param("year") int year,
+            @Param("month") int month,
+            @Param("countryCode") String countryCode);
 
     /**
      * 공휴일 타입별 조회
-     * @param holidayType 공휴일 타입
-     * @param year 연도
-     * @return 해당 타입의 공휴일 목록
      */
-    @Query("SELECT h FROM Holiday h WHERE h.holidayType = :holidayType AND YEAR(h.holidayDate) = :year ORDER BY h.holidayDate ASC")
-    List<Holiday> findByHolidayTypeAndYear(@Param("holidayType") Holiday.HolidayType holidayType, @Param("year") int year);
+    List<Holiday> findByHolidayTypeAndCountryCodeOrderByHolidayDateAsc(
+            Holiday.HolidayType holidayType, String countryCode);
 
     /**
-     * 오늘의 공휴일 조회
-     * @return 오늘의 공휴일 목록
+     * 반복 공휴일 조회
      */
-    @Query("SELECT h FROM Holiday h WHERE h.holidayDate = CURRENT_DATE ORDER BY h.holidayType ASC")
-    List<Holiday> findTodayHolidays();
+    List<Holiday> findByIsRecurringTrueAndCountryCodeOrderByHolidayDateAsc(String countryCode);
 
     /**
-     * 다가오는 공휴일 조회 (앞으로 N일간)
-     * @param endDate 며칠 후까지
-     * @return 다가오는 공휴일 목록
+     * 공휴일명으로 검색
      */
-    @Query("SELECT h FROM Holiday h WHERE h.holidayDate >= CURRENT_DATE AND h.holidayDate <= :endDate ORDER BY h.holidayDate ASC")
-    List<Holiday> findUpcomingHolidays(@Param("endDate") LocalDate endDate);
+    List<Holiday> findByNameContainingIgnoreCaseAndCountryCodeOrderByHolidayDateAsc(
+            String name, String countryCode);
 
     /**
-     * 특정 날짜에 공휴일이 있는지 확인
-     * @param date 확인할 날짜
-     * @return 공휴일 존재 여부
+     * 특정 날짜 범위의 공휴일 개수 조회
      */
-    boolean existsByHolidayDate(LocalDate date);
+    long countByHolidayDateBetweenAndCountryCode(
+            LocalDate startDate, LocalDate endDate, String countryCode);
 
     /**
-     * 특정 연도의 공휴일 개수
-     * @param year 연도
-     * @return 공휴일 개수
+     * 오늘 이후의 다음 공휴일 조회
      */
-    @Query("SELECT COUNT(h) FROM Holiday h WHERE YEAR(h.holidayDate) = :year")
-    long countByYear(@Param("year") int year);
+    @Query("SELECT h FROM Holiday h WHERE h.holidayDate >= :today AND h.countryCode = :countryCode ORDER BY h.holidayDate ASC LIMIT 1")
+    Holiday findNextHoliday(@Param("today") LocalDate today, @Param("countryCode") String countryCode);
 
     /**
-     * 중복 공휴일 확인 (같은 날짜, 같은 이름)
-     * @param name 공휴일 이름
-     * @param holidayDate 날짜
-     * @return 존재 여부
+     * 특정 년도의 국경일만 조회
      */
-    boolean existsByNameAndHolidayDate(String name, LocalDate holidayDate);
+    @Query("SELECT h FROM Holiday h WHERE YEAR(h.holidayDate) = :year AND h.countryCode = :countryCode AND h.holidayType = 'NATIONAL' ORDER BY h.holidayDate ASC")
+    List<Holiday> findNationalHolidaysByYear(@Param("year") int year, @Param("countryCode") String countryCode);
+
+    /**
+     * 특정 년도의 공휴일만 조회 (국경일 제외)
+     */
+    @Query("SELECT h FROM Holiday h WHERE YEAR(h.holidayDate) = :year AND h.countryCode = :countryCode AND h.holidayType = 'PUBLIC' ORDER BY h.holidayDate ASC")
+    List<Holiday> findPublicHolidaysByYear(@Param("year") int year, @Param("countryCode") String countryCode);
+
+    /**
+     * 이번 주 공휴일 조회
+     */
+    @Query("SELECT h FROM Holiday h WHERE h.holidayDate BETWEEN :weekStart AND :weekEnd AND h.countryCode = :countryCode ORDER BY h.holidayDate ASC, h.holidayType ASC")
+    List<Holiday> findHolidaysInWeek(
+            @Param("weekStart") LocalDate weekStart,
+            @Param("weekEnd") LocalDate weekEnd,
+            @Param("countryCode") String countryCode);
+
+    /**
+     * 이름, 날짜, 국가로 중복 확인
+     */
+    boolean existsByNameAndHolidayDateAndCountryCode(String name, LocalDate holidayDate, String countryCode);
+
+    /**
+     * 이름과 날짜로 중복 확인 (기존 메서드와 호환성 유지)
+     */
+    @Query("SELECT CASE WHEN COUNT(h) > 0 THEN true ELSE false END FROM Holiday h WHERE h.name = :name AND h.holidayDate = :holidayDate")
+    boolean existsByNameAndHolidayDate(@Param("name") String name, @Param("holidayDate") LocalDate holidayDate);
+
+    /**
+     * 특정 월의 공휴일 여부 확인
+     */
+    @Query("SELECT CASE WHEN COUNT(h) > 0 THEN true ELSE false END FROM Holiday h WHERE YEAR(h.holidayDate) = :year AND MONTH(h.holidayDate) = :month AND h.countryCode = :countryCode")
+    boolean existsHolidayInMonth(@Param("year") int year, @Param("month") int month, @Param("countryCode") String countryCode);
 }
