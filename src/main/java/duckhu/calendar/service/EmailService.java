@@ -1,5 +1,6 @@
 package duckhu.calendar.service;
 
+import duckhu.calendar.config.EmailConfig;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,8 +15,11 @@ import java.util.Random;
 @Service
 public class EmailService {
 
-    @Autowired(required = false)  // 이메일 설정이 없어도 실행 가능
+    @Autowired(required = false)
     private JavaMailSender mailSender;
+
+    @Autowired
+    private EmailConfig.EmailEnvironmentInfo environmentInfo;
 
     @Value("${spring.mail.username:noreply@calendar.com}")
     private String fromEmail;
@@ -23,35 +27,42 @@ public class EmailService {
     @Value("${app.name:더쿠 캘린더}")
     private String appName;
 
-    @Value("${app.admin.console-output:true}")  // 기본값 true (로컬)
-    private boolean consoleOutput;
+    /**
+     * 현재 환경이 로컬/개발 환경인지 확인
+     */
+    private boolean isLocalEnvironment() {
+        return environmentInfo.isLocalEnvironment() || mailSender == null;
+    }
 
-    @Value("${spring.profiles.active:local}")
-    private String activeProfile;
+    /**
+     * 메일 전송 가능 여부 확인
+     */
+    private boolean isMailAvailable() {
+        return environmentInfo.isProdEnvironment() && mailSender != null;
+    }
+
+    /**
+     * 환경 정보 로깅
+     */
+    private void logEnvironmentInfo(String operation) {
+        String mode = isLocalEnvironment() ? "LOCAL/CONSOLE" : "PROD/EMAIL";
+        System.out.println("📧 [" + mode + "] " + operation + " - Profile: " + environmentInfo.getProfile());
+    }
 
     /**
      * 간단한 텍스트 이메일 전송
      */
     public void sendEmail(String to, String subject, String body) {
-        // 로컬 환경이거나 콘솔 출력 설정이 true면 콘솔에 출력
+        logEnvironmentInfo("텍스트 이메일 전송");
+
+        // 로컬/개발 환경에서는 콘솔 출력
         if (isLocalEnvironment()) {
-            System.out.println("========================================");
-            System.out.println("📧 [LOCAL MODE] 이메일 전송 (콘솔 출력)");
-            System.out.println("========================================");
-            System.out.println("수신자: " + to);
-            System.out.println("제목: " + subject);
-            System.out.println("내용:");
-            System.out.println(body);
-            System.out.println("========================================");
+            printEmailToConsole("텍스트 이메일", to, subject, body);
             return;
         }
 
-        // 실서버 환경에서는 실제 이메일 발송
+        // 실서버 환경에서 실제 이메일 발송
         try {
-            if (mailSender == null) {
-                throw new RuntimeException("이메일 설정이 되어있지 않습니다.");
-            }
-
             SimpleMailMessage message = new SimpleMailMessage();
             message.setFrom(fromEmail);
             message.setTo(to);
@@ -59,11 +70,12 @@ public class EmailService {
             message.setText(body);
 
             mailSender.send(message);
-            System.out.println("✅ 이메일 발송 성공: " + to);
+            System.out.println("✅ [PROD] 이메일 발송 성공: " + to);
 
         } catch (Exception e) {
-            System.err.println("❌ 이메일 발송 실패: " + e.getMessage());
-            throw new RuntimeException("이메일 발송에 실패했습니다.", e);
+            System.err.println("❌ [PROD] 이메일 발송 실패: " + e.getMessage());
+            // 실서버에서도 실패시 콘솔로 대체
+            printEmailToConsole("텍스트 이메일 (발송실패-콘솔대체)", to, subject, body);
         }
     }
 
@@ -71,25 +83,16 @@ public class EmailService {
      * HTML 이메일 전송
      */
     public void sendHtmlEmail(String to, String subject, String htmlBody) {
-        // 로컬 환경에서는 콘솔 출력
+        logEnvironmentInfo("HTML 이메일 전송");
+
+        // 로컬/개발 환경에서는 콘솔 출력
         if (isLocalEnvironment()) {
-            System.out.println("========================================");
-            System.out.println("📧 [LOCAL MODE] HTML 이메일 (콘솔 출력)");
-            System.out.println("========================================");
-            System.out.println("수신자: " + to);
-            System.out.println("제목: " + subject);
-            System.out.println("HTML 내용:");
-            System.out.println(htmlBody.replaceAll("<[^>]*>", "")); // HTML 태그 제거
-            System.out.println("========================================");
+            printEmailToConsole("HTML 이메일", to, subject, htmlBody.replaceAll("<[^>]*>", ""));
             return;
         }
 
-        // 실서버 환경
+        // 실서버 환경에서 실제 이메일 발송
         try {
-            if (mailSender == null) {
-                throw new RuntimeException("이메일 설정이 되어있지 않습니다.");
-            }
-
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
@@ -99,11 +102,12 @@ public class EmailService {
             helper.setText(htmlBody, true);
 
             mailSender.send(message);
-            System.out.println("✅ HTML 이메일 발송 성공: " + to);
+            System.out.println("✅ [PROD] HTML 이메일 발송 성공: " + to);
 
         } catch (MessagingException e) {
-            System.err.println("❌ HTML 이메일 발송 실패: " + e.getMessage());
-            throw new RuntimeException("HTML 이메일 발송에 실패했습니다.", e);
+            System.err.println("❌ [PROD] HTML 이메일 발송 실패: " + e.getMessage());
+            // 실서버에서도 실패시 콘솔로 대체
+            printEmailToConsole("HTML 이메일 (발송실패-콘솔대체)", to, subject, htmlBody.replaceAll("<[^>]*>", ""));
         }
     }
 
@@ -112,25 +116,119 @@ public class EmailService {
      */
     public String sendTempPassword(String email) {
         String tempPassword = generateTempPassword();
-
         String subject = "[" + appName + "] 관리자 임시 비밀번호";
 
-        // 로컬 환경에서는 특별한 형식으로 출력
+        logEnvironmentInfo("관리자 임시 비밀번호 발송");
+
+        // 로컬/개발 환경에서는 특별한 형식으로 출력
         if (isLocalEnvironment()) {
-            System.out.println("\n");
-            System.out.println("╔════════════════════════════════════════╗");
-            System.out.println("║     🔐 관리자 임시 비밀번호 발급       ║");
-            System.out.println("╠════════════════════════════════════════╣");
-            System.out.println("║ 이메일: " + String.format("%-31s", email) + "║");
-            System.out.println("║ 임시 비밀번호: " + String.format("%-24s", tempPassword) + "║");
-            System.out.println("║ 유효시간: 30분                         ║");
-            System.out.println("╚════════════════════════════════════════╝");
-            System.out.println("\n");
+            printTempPasswordToConsole(email, tempPassword);
             return tempPassword;
         }
 
         // 실서버에서는 이메일 발송
-        String htmlBody = String.format(
+        String htmlBody = createTempPasswordHtml(tempPassword);
+        sendHtmlEmail(email, subject, htmlBody);
+        return tempPassword;
+    }
+
+    /**
+     * 이메일 인증 코드 전송
+     */
+    public String sendVerificationCode(String email) {
+        String code = generateVerificationCode();
+        String subject = "[" + appName + "] 이메일 인증 코드";
+
+        logEnvironmentInfo("이메일 인증 코드 발송");
+
+        if (isLocalEnvironment()) {
+            printVerificationCodeToConsole(email, code);
+            return code;
+        }
+
+        // 실서버에서는 이메일 발송
+        String htmlBody = createVerificationCodeHtml(code);
+        sendHtmlEmail(email, subject, htmlBody);
+        return code;
+    }
+
+    /**
+     * 뉴스레터 발송
+     */
+    public void sendNewsletter(String email, String subject, String content) {
+        logEnvironmentInfo("뉴스레터 발송");
+
+        if (isLocalEnvironment()) {
+            printEmailToConsole("뉴스레터", email, subject, content);
+            return;
+        }
+
+        String htmlBody = createNewsletterHtml(content);
+        sendHtmlEmail(email, subject, htmlBody);
+    }
+
+    // ========== 콘솔 출력 메서드들 ==========
+
+    /**
+     * 일반 이메일 콘솔 출력
+     */
+    private void printEmailToConsole(String type, String to, String subject, String body) {
+        String envLabel = "[" + environmentInfo.getProfile().toUpperCase() + " MODE]";
+
+        System.out.println("\n========================================");
+        System.out.println("📧 " + envLabel + " " + type + " (콘솔 출력)");
+        System.out.println("========================================");
+        System.out.println("프로파일: " + environmentInfo.getProfile());
+        System.out.println("메일 활성화: " + (environmentInfo.isMailEnabled() ? "예" : "아니오"));
+        System.out.println("수신자: " + to);
+        System.out.println("제목: " + subject);
+        System.out.println("내용:");
+        System.out.println(body);
+        System.out.println("========================================\n");
+    }
+
+    /**
+     * 임시 비밀번호 콘솔 출력
+     */
+    private void printTempPasswordToConsole(String email, String tempPassword) {
+        String profile = environmentInfo.getProfile().toUpperCase();
+
+        System.out.println("\n");
+        System.out.println("╔════════════════════════════════════════╗");
+        System.out.println("║     🔐 관리자 임시 비밀번호 발급       ║");
+        System.out.println("║         [" + String.format("%-4s", profile) + " MODE]                   ║");
+        System.out.println("╠════════════════════════════════════════╣");
+        System.out.println("║ 이메일: " + String.format("%-31s", email) + "║");
+        System.out.println("║ 임시 비밀번호: " + String.format("%-24s", tempPassword) + "║");
+        System.out.println("║ 유효시간: 30분                         ║");
+        System.out.println("║ 실제 발송 여부: " + String.format("%-22s", environmentInfo.isMailEnabled() ? "실제 이메일 발송됨" : "콘솔 출력만") + "║");
+        System.out.println("╚════════════════════════════════════════╝");
+        System.out.println("\n");
+    }
+
+    /**
+     * 인증 코드 콘솔 출력
+     */
+    private void printVerificationCodeToConsole(String email, String code) {
+        String profile = environmentInfo.getProfile().toUpperCase();
+
+        System.out.println("\n");
+        System.out.println("┌─────────────────────────────────┐");
+        System.out.println("│   📮 이메일 인증 코드 발송      │");
+        System.out.println("│      [" + String.format("%-4s", profile) + " MODE]               │");
+        System.out.println("├─────────────────────────────────┤");
+        System.out.println("│ 수신자: " + String.format("%-20s", email) + "│");
+        System.out.println("│ 인증코드: " + String.format("%-18s", code) + "│");
+        System.out.println("│ 유효시간: 10분                  │");
+        System.out.println("│ 발송방식: " + String.format("%-18s", environmentInfo.isMailEnabled() ? "실제 이메일" : "콘솔 출력") + "│");
+        System.out.println("└─────────────────────────────────┘");
+        System.out.println("\n");
+    }
+
+    // ========== HTML 생성 메서드들 ==========
+
+    private String createTempPasswordHtml(String tempPassword) {
+        return String.format(
                 "<html><body>" +
                         "<h2>관리자 임시 비밀번호 안내</h2>" +
                         "<p>안녕하세요, 관리자님.</p>" +
@@ -143,74 +241,73 @@ public class EmailService {
                         "</body></html>",
                 tempPassword
         );
-
-        sendHtmlEmail(email, subject, htmlBody);
-        return tempPassword;
     }
 
-    /**
-     * 이메일 인증 코드 전송
-     */
-    public String sendVerificationCode(String email) {
-        String code = generateVerificationCode();
-
-        String subject = "[" + appName + "] 이메일 인증 코드";
-
-        // 로컬 환경
-        if (isLocalEnvironment()) {
-            System.out.println("\n");
-            System.out.println("┌─────────────────────────────────┐");
-            System.out.println("│   📮 이메일 인증 코드 발송      │");
-            System.out.println("├─────────────────────────────────┤");
-            System.out.println("│ 수신자: " + String.format("%-24s", email) + "│");
-            System.out.println("│ 인증코드: " + String.format("%-22s", code) + "│");
-            System.out.println("│ 유효시간: 5분                   │");
-            System.out.println("└─────────────────────────────────┘");
-            System.out.println("\n");
-            return code;
-        }
-
-        // 실서버
-        String body = String.format(
-                "안녕하세요!\n\n" +
-                        "이메일 인증 코드는 다음과 같습니다:\n\n" +
-                        "인증 코드: %s\n\n" +
-                        "이 코드는 5분간 유효합니다.\n",
+    private String createVerificationCodeHtml(String code) {
+        return String.format(
+                "<html><body>" +
+                        "<h2>이메일 인증 안내</h2>" +
+                        "<p>안녕하세요.</p>" +
+                        "<p>이메일 인증을 위한 인증 코드를 안내드립니다:</p>" +
+                        "<div style='background-color: #e3f2fd; padding: 15px; border-radius: 5px; margin: 20px 0; text-align: center;'>" +
+                        "<strong style='font-size: 24px; color: #1976d2; letter-spacing: 3px;'>%s</strong>" +
+                        "</div>" +
+                        "<p>위 인증 코드를 입력하여 인증을 완료해주세요.</p>" +
+                        "<p>이 인증 코드는 10분간 유효합니다.</p>" +
+                        "</body></html>",
                 code
         );
-
-        sendEmail(email, subject, body);
-        return code;
     }
 
-    /**
-     * 로컬 환경인지 확인
-     */
-    private boolean isLocalEnvironment() {
-        return consoleOutput || "local".equals(activeProfile) || "dev".equals(activeProfile);
+    private String createNewsletterHtml(String content) {
+        return String.format(
+                "<html><body>" +
+                        "<div style='max-width: 600px; margin: 0 auto; font-family: Arial, sans-serif;'>" +
+                        "<h1 style='color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px;'>%s 주간 뉴스레터</h1>" +
+                        "%s" +
+                        "<hr style='margin: 30px 0; border: 1px solid #eee;'>" +
+                        "<p style='color: #666; font-size: 12px;'>본 메일은 발신전용입니다. 수신을 원하지 않으시면 구독을 취소해주세요.</p>" +
+                        "</div>" +
+                        "</body></html>",
+                appName, content
+        );
     }
 
-    /**
-     * 6자리 인증 코드 생성
-     */
+    // ========== 유틸리티 메서드들 ==========
+
+    private String generateTempPassword() {
+        Random random = new Random();
+        return String.format("%06d", random.nextInt(1000000));
+    }
+
     private String generateVerificationCode() {
         Random random = new Random();
-        int code = 100000 + random.nextInt(900000);
-        return String.valueOf(code);
+        return String.format("%06d", random.nextInt(1000000));
     }
 
     /**
-     * 임시 비밀번호 생성 (8자리)
+     * 메일 시스템 상태 확인
      */
-    private String generateTempPassword() {
-        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$";
-        StringBuilder password = new StringBuilder();
-        Random random = new Random();
+    public boolean isEmailSystemAvailable() {
+        return isMailAvailable();
+    }
 
-        for (int i = 0; i < 8; i++) {
-            password.append(chars.charAt(random.nextInt(chars.length())));
-        }
+    /**
+     * 현재 환경 정보 반환
+     */
+    public EmailConfig.EmailEnvironmentInfo getEnvironmentInfo() {
+        return environmentInfo;
+    }
 
-        return password.toString();
+    /**
+     * 이메일 시스템 상태 요약
+     */
+    public String getEmailSystemStatus() {
+        return String.format(
+                "프로파일: %s, 메일 활성화: %s, 발송 방식: %s",
+                environmentInfo.getProfile(),
+                environmentInfo.isMailEnabled() ? "예" : "아니오",
+                isLocalEnvironment() ? "콘솔 출력" : "실제 이메일"
+        );
     }
 }
