@@ -41,20 +41,26 @@ public class SecurityConfig {
 
                 // 요청 권한 설정
                 .authorizeHttpRequests(auth -> auth
-                        // 공개 엔드포인트
-                        .requestMatchers("/admin/request-temp-password", "/admin/login").permitAll()
-                        .requestMatchers("/schedules/**", "/holidays/**").permitAll()
-                        .requestMatchers("/notices/active", "/notices/{id}").permitAll() // 공지사항 조회 허용
-                        .requestMatchers("/event-requests/submit", "/event-requests/send-verification", "/event-requests/verify-email").permitAll()
-                        .requestMatchers("/email-subscriptions", "/email-subscriptions/unsubscribe/**").permitAll()
+                        // 인증 없이 접근 가능한 엔드포인트 (로그인 관련)
+                        .requestMatchers("/api/admin/request-temp-password", "/api/admin/login").permitAll()
 
-                        // 관리자 전용 엔드포인트
-                        .requestMatchers("/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/notices/admin/**").hasRole("ADMIN") // 공지사항 관리자 기능
-                        .requestMatchers("/event-requests/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/email-subscriptions/**").hasRole("ADMIN")
+                        // 공개 API (인증 불필요)
+                        .requestMatchers("/api/schedules/**", "/api/holidays/**").permitAll()
+                        .requestMatchers("/api/notices/active", "/api/notices/{id}").permitAll()
+                        .requestMatchers("/api/event-requests/submit", "/api/event-requests/send-verification", "/api/event-requests/verify-email").permitAll()
+                        .requestMatchers("/api/email-subscriptions", "/api/email-subscriptions/unsubscribe/**").permitAll()
 
-                        // 나머지 요청
+                        // 정적 리소스 및 Vue.js 라우팅 허용
+                        .requestMatchers("/", "/admin", "/admin-login", "/settings").permitAll()
+                        .requestMatchers("/static/**", "/assets/**", "/*.js", "/*.css", "/*.ico", "/*.png", "/*.jpg").permitAll()
+
+                        // 관리자 권한이 필요한 API 엔드포인트
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/notices/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/event-requests/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/email-subscriptions/admin/**").hasRole("ADMIN")
+
+                        // 나머지 요청은 허용 (Vue.js SPA 라우팅을 위해)
                         .anyRequest().permitAll()
                 );
 

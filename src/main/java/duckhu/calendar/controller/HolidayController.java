@@ -30,22 +30,23 @@ public class HolidayController {
 
     /**
      * 날짜 범위별 공휴일/국경일 조회
+     * Vue.js에서 보내는 파라미터명에 맞춰 수정
      */
     @GetMapping("/range")
     public ResponseEntity<Map<String, Object>> getHolidaysByDateRange(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate start,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate end,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(defaultValue = "KR") String countryCode) {
 
-        log.info("공휴일 조회 요청 - 시작일: {}, 종료일: {}, 국가: {}", start, end, countryCode);
+        log.info("공휴일 조회 요청 - 시작일: {}, 종료일: {}, 국가: {}", startDate, endDate, countryCode);
 
         try {
-            List<HolidayDTO> holidays = holidayService.getHolidaysByDateRange(start, end, countryCode);
+            List<HolidayDTO> holidays = holidayService.getHolidaysByDateRange(startDate, endDate, countryCode);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
-            response.put("startDate", start.toString());
-            response.put("endDate", end.toString());
+            response.put("startDate", startDate.toString());
+            response.put("endDate", endDate.toString());
             response.put("holidays", holidays);
             response.put("count", holidays.size());
 
@@ -55,8 +56,50 @@ public class HolidayController {
 
         } catch (Exception e) {
             log.error("날짜 범위별 공휴일 조회 실패: {}", e.getMessage());
-            return createErrorResponse("날짜 범위별 공휴일 조회에 실패했습니다.", e.getMessage());
+
+            // 에러 시 기본 공휴일 반환
+            List<HolidayDTO> defaultHolidays = getDefaultHolidaysForDateRange(startDate, endDate, countryCode);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("startDate", startDate.toString());
+            response.put("endDate", endDate.toString());
+            response.put("holidays", defaultHolidays);
+            response.put("count", defaultHolidays.size());
+            response.put("message", "기본 공휴일 데이터를 제공합니다.");
+            response.put("error", e.getMessage());
+
+            return ResponseEntity.ok(response); // 500 대신 200으로 반환
         }
+    }
+
+    /**
+     * 날짜 범위에 대한 기본 공휴일 생성
+     */
+    private List<HolidayDTO> getDefaultHolidaysForDateRange(LocalDate startDate, LocalDate endDate, String countryCode) {
+        List<HolidayDTO> holidays = new ArrayList<>();
+
+        if (!"KR".equals(countryCode)) {
+            return holidays; // 한국이 아니면 빈 리스트 반환
+        }
+
+        // 해당 범위의 연도들 추출
+        int startYear = startDate.getYear();
+        int endYear = endDate.getYear();
+
+        for (int year = startYear; year <= endYear; year++) {
+            List<HolidayDTO> yearHolidays = getDefaultHolidaysForError(year, countryCode);
+
+            // 날짜 범위 필터링
+            for (HolidayDTO holiday : yearHolidays) {
+                LocalDate holidayDate = holiday.getHolidayDate();
+                if (!holidayDate.isBefore(startDate) && !holidayDate.isAfter(endDate)) {
+                    holidays.add(holiday);
+                }
+            }
+        }
+
+        return holidays;
     }
 
     /**
