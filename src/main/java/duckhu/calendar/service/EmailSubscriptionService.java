@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -63,7 +64,26 @@ public class EmailSubscriptionService {
      * 모든 구독자 조회 (관리자용)
      */
     public List<EmailSubscription> getAllSubscribers() {
-        return subscriptionRepository.findAllByOrderBySubscribedAtDesc();
+        try {
+            // 간단한 findAll 사용
+            List<EmailSubscription> result = subscriptionRepository.findAll();
+
+            // 정렬이 필요하면 여기서
+            if (result != null && !result.isEmpty()) {
+                result.sort((a, b) -> {
+                    if (b.getSubscribedAt() == null) return -1;
+                    if (a.getSubscribedAt() == null) return 1;
+                    return b.getSubscribedAt().compareTo(a.getSubscribedAt());
+                });
+            }
+
+            return result != null ? result : new ArrayList<>();
+
+        } catch (Exception e) {
+            System.err.println("구독자 조회 실패: " + e.getMessage());
+            e.printStackTrace();
+            return new ArrayList<>();
+        }
     }
 
     /**

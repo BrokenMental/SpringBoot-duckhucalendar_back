@@ -1,68 +1,90 @@
 package duckhu.calendar.entity;
 
 import jakarta.persistence.*;
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "email_subscriptions",
-        uniqueConstraints = @UniqueConstraint(columnNames = "email"))
+@Table(name = "email_subscriptions")
 public class EmailSubscription {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @NotBlank
-    @Email
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(name = "subscriber_name", length = 100)
+    @Column(name = "subscriber_name")
     private String subscriberName;
 
-    @Column(name = "is_active", nullable = false)
+    @Column(name = "is_active")
     private Boolean isActive = true;
 
-    @Column(name = "unsubscribe_token", unique = true)
+    @Column(name = "unsubscribe_token")
     private String unsubscribeToken;
 
-    @CreationTimestamp
-    @Column(name = "subscribed_at", nullable = false)
+    @Column(name = "subscribed_at")
+    @CreationTimestamp  // 이것이 있으면 JPA가 자동으로 값을 설정
     private LocalDateTime subscribedAt;
 
     @Column(name = "unsubscribed_at")
     private LocalDateTime unsubscribedAt;
 
-    // 기본 생성자
-    public EmailSubscription() {}
-
-    // 생성자
-    public EmailSubscription(String email) {
-        this.email = email;
-        this.unsubscribeToken = java.util.UUID.randomUUID().toString();
+    public Long getId() {
+        return id;
     }
 
-    // Getter와 Setter
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
+    public void setId(Long id) {
+        this.id = id;
+    }
 
-    public String getEmail() { return email; }
-    public void setEmail(String email) { this.email = email; }
+    public String getEmail() {
+        return email;
+    }
 
-    public String getSubscriberName() { return subscriberName; }
-    public void setSubscriberName(String subscriberName) { this.subscriberName = subscriberName; }
+    public void setEmail(String email) {
+        this.email = email;
+    }
 
-    public Boolean getIsActive() { return isActive; }
-    public void setIsActive(Boolean isActive) { this.isActive = isActive; }
+    public String getSubscriberName() {
+        return subscriberName;
+    }
 
-    public String getUnsubscribeToken() { return unsubscribeToken; }
-    public void setUnsubscribeToken(String unsubscribeToken) { this.unsubscribeToken = unsubscribeToken; }
+    public void setSubscriberName(String subscriberName) {
+        this.subscriberName = subscriberName;
+    }
 
-    public LocalDateTime getSubscribedAt() { return subscribedAt; }
-    public LocalDateTime getUnsubscribedAt() { return unsubscribedAt; }
-    public void setUnsubscribedAt(LocalDateTime unsubscribedAt) { this.unsubscribedAt = unsubscribedAt; }
+    public Boolean getIsActive() {
+        return isActive;
+    }
+
+    public void setIsActive(Boolean active) {
+        isActive = active;
+    }
+
+    public String getUnsubscribeToken() {
+        return unsubscribeToken;
+    }
+
+    public void setUnsubscribeToken(String unsubscribeToken) {
+        this.unsubscribeToken = unsubscribeToken;
+    }
+
+    public LocalDateTime getUnsubscribedAt() {
+        return unsubscribedAt;
+    }
+
+    public void setUnsubscribedAt(LocalDateTime unsubscribedAt) {
+        this.unsubscribedAt = unsubscribedAt;
+    }
+
+    // getter/setter 확인
+    public LocalDateTime getSubscribedAt() {
+        return subscribedAt;
+    }
+
+    public void setSubscribedAt(LocalDateTime subscribedAt) {
+        this.subscribedAt = subscribedAt;
+    }
 }
