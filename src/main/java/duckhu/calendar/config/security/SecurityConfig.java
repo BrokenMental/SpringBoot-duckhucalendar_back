@@ -43,12 +43,14 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // 공개 엔드포인트
                         .requestMatchers("/admin/request-temp-password", "/admin/login").permitAll()
-                        .requestMatchers("/schedules/health", "/holidays/**").permitAll()
+                        .requestMatchers("/schedules/**", "/holidays/**").permitAll()
+                        .requestMatchers("/notices/active", "/notices/{id}").permitAll() // 공지사항 조회 허용
                         .requestMatchers("/event-requests/submit", "/event-requests/send-verification", "/event-requests/verify-email").permitAll()
                         .requestMatchers("/email-subscriptions", "/email-subscriptions/unsubscribe/**").permitAll()
 
                         // 관리자 전용 엔드포인트
                         .requestMatchers("/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/notices/admin/**").hasRole("ADMIN") // 공지사항 관리자 기능
                         .requestMatchers("/event-requests/admin/**").hasRole("ADMIN")
                         .requestMatchers("/email-subscriptions/**").hasRole("ADMIN")
 
@@ -63,9 +65,10 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        configuration.setAllowedOriginPatterns(Arrays.asList(
+        // 구체적인 도메인 명시 (allowCredentials: true와 호환)
+        configuration.setAllowedOrigins(Arrays.asList(
                 "http://localhost:5173",
-                "http://localhost:*"
+                "http://127.0.0.1:5173"
         ));
 
         configuration.setAllowedMethods(Arrays.asList(
