@@ -75,36 +75,79 @@ public class HolidayService {
     /**
      * 연도별 공휴일/국경일 조회 (공공데이터 API 연동)
      */
+    @Transactional(readOnly = true)
     public List<HolidayDTO> getHolidaysByYear(int year, String countryCode) {
         List<Holiday> holidays = holidayRepository.findByYearAndCountryCode(year, countryCode);
 
-        // 공휴일이 부족할 경우 별도 트랜잭션에서 동기화
+        // 공휴일이 부족할 경우 기본 데이터 반환 (동기화 시도하지 않음)
         if (holidays.size() < MIN_EXPECTED_HOLIDAYS) {
-            log.info("{}년 공휴일 데이터가 부족하여 공공 API에서 동기화합니다.", year);
-            // 별도 메서드로 분리하여 새로운 트랜잭션에서 실행
-            try {
-                syncHolidaysInNewTransaction(year, countryCode);
-                // 동기화 후 다시 조회
-                holidays = holidayRepository.findByYearAndCountryCode(year, countryCode);
-            } catch (Exception e) {
-                log.warn("공휴일 동기화 실패: {}", e.getMessage());
+            log.info("{}년 공휴일 데이터가 부족합니다. 기본 데이터를 반환합니다.", year);
+
+            // 기본 공휴일 DTO 반환 (DB 저장하지 않음)
+            List<HolidayDTO> defaultHolidays = getDefaultKoreanHolidaysAsDTO(year);
+
+            // 기존 DB 데이터와 기본 데이터 병합
+            List<HolidayDTO> existingDtos = holidays.stream()
+                    .map(HolidayDTO::fromEntity)
+                    .collect(Collectors.toList());
+
+            // 중복 제거하여 병합
+            Set<String> existingNames = existingDtos.stream()
+                    .map(h -> h.getName() + "-" + h.getHolidayDate())
+                    .collect(Collectors.toSet());
+
+            for (HolidayDTO defaultHoliday : defaultHolidays) {
+                String key = defaultHoliday.getName() + "-" + defaultHoliday.getHolidayDate();
+                if (!existingNames.contains(key)) {
+                    existingDtos.add(defaultHoliday);
+                }
             }
+
+            return existingDtos;
         }
 
         return holidays.stream()
-                .map(this::convertToDTO)
+                .map(HolidayDTO::fromEntity)
                 .collect(Collectors.toList());
     }
 
     /**
-     * Entity를 DTO로 변환하는 메서드 추가
+     * 기본 한국 공휴일 DTO 반환 (DB 저장하지 않음)
      */
-    private HolidayDTO convertToDTO(Holiday holiday) {
-        return HolidayDTO.fromEntity(holiday);
+    private List<HolidayDTO> getDefaultKoreanHolidaysAsDTO(int year) {
+        List<HolidayDTO> holidays = new ArrayList<>();
+
+        // 기본 공휴일들
+        addHolidayDTO(holidays, year, 1, 1, "신정", "KR");
+        addHolidayDTO(holidays, year, 3, 1, "삼일절", "KR");
+        addHolidayDTO(holidays, year, 5, 5, "어린이날", "KR");
+        addHolidayDTO(holidays, year, 6, 6, "현충일", "KR");
+        addHolidayDTO(holidays, year, 8, 15, "광복절", "KR");
+        addHolidayDTO(holidays, year, 10, 3, "개천절", "KR");
+        addHolidayDTO(holidays, year, 10, 9, "한글날", "KR");
+        addHolidayDTO(holidays, year, 12, 25, "크리스마스", "KR");
+
+        return holidays;
     }
 
     /**
-     * 새로운 트랜잭션에서 공휴일 동기화
+     * 공휴일 DTO 생성 헬퍼 메서드
+     */
+    private void addHolidayDTO(List<HolidayDTO> holidays, int year, int month, int day, String name, String countryCode) {
+        HolidayDTO holiday = new HolidayDTO();
+        holiday.setId(-1L); // 임시 ID (DB에 저장되지 않음을 표시)
+        holiday.setName(name);
+        holiday.setHolidayDate(LocalDate.of(year, month, day));
+        holiday.setCountryCode(countryCode);
+        holiday.setHolidayType(Holiday.HolidayType.PUBLIC);
+        holiday.setDescription(name);
+        holiday.setIsRecurring(true);
+        holiday.setColor("#FF6B6B");
+        holidays.add(holiday);
+    }
+
+    /**
+     * 새로운 트랜잭션에서 공휴일 동기화 (관리자 전용)
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void syncHolidaysInNewTransaction(int year, String countryCode) {
@@ -112,8 +155,15 @@ public class HolidayService {
             syncHolidaysFromPublicAPI(year, countryCode);
         } catch (Exception e) {
             log.warn("공휴일 동기화 실패, 기본 데이터 생성: {}", e.getMessage());
-            createDefaultHolidays(year, countryCode);
+            createDefaultKoreanHolidays(year);
         }
+    }
+
+    /**
+     * Entity를 DTO로 변환하는 메서드 추가
+     */
+    private HolidayDTO convertToDTO(Holiday holiday) {
+        return HolidayDTO.fromEntity(holiday);
     }
 
     /**
@@ -216,55 +266,163 @@ public class HolidayService {
      * 공공데이터 API URL 생성
      */
     private String buildPublicApiUrl(int year) {
-        return String.format("%s/getRestDeInfo?serviceKey=%s&solYear=%d&_type=json",
+        // JSON 형식으로 요청하되, 공공데이터 포털에서는 여전히 XML을 반환할 수 있음
+        return String.format("%s/getRestDeInfo?serviceKey=%s&solYear=%d&_type=xml",
                 publicDataConfig.getHolidayApiBaseUrl(),
                 publicDataConfig.getServiceKey(),
                 year);
     }
 
     /**
-     * 공공데이터 API 응답 파싱 (JSON 형식)
+     * 공공데이터 API 응답 파싱 (XML 형식)
      */
     private List<HolidayDTO> parsePublicApiResponse(String response, int year) {
         List<HolidayDTO> holidays = new ArrayList<>();
 
         try {
-            JsonNode rootNode = objectMapper.readTree(response);
-            JsonNode responseNode = rootNode.path("response");
-            JsonNode bodyNode = responseNode.path("body");
-            JsonNode itemsNode = bodyNode.path("items");
+            // XML 응답인지 확인
+            if (response.trim().startsWith("<")) {
+                // XML 파싱 로직
+                return parseXmlResponse(response, year);
+            } else {
+                // JSON 파싱 로직 (기존 코드)
+                JsonNode rootNode = objectMapper.readTree(response);
+                JsonNode responseNode = rootNode.path("response");
+                JsonNode bodyNode = responseNode.path("body");
+                JsonNode itemsNode = bodyNode.path("items");
 
-            // 응답 상태 확인
-            JsonNode headerNode = responseNode.path("header");
-            String resultCode = headerNode.path("resultCode").asText();
+                // 응답 상태 확인
+                JsonNode headerNode = responseNode.path("header");
+                String resultCode = headerNode.path("resultCode").asText();
 
-            if (!"00".equals(resultCode)) {
-                String resultMsg = headerNode.path("resultMsg").asText();
-                throw new RuntimeException("API 오류 - 코드: " + resultCode + ", 메시지: " + resultMsg);
-            }
+                if (!"00".equals(resultCode)) {
+                    String resultMsg = headerNode.path("resultMsg").asText();
+                    throw new RuntimeException("API 오류 - 코드: " + resultCode + ", 메시지: " + resultMsg);
+                }
 
-            // 데이터가 배열인지 객체인지 확인
-            JsonNode itemNode = itemsNode.path("item");
-            if (itemNode.isArray()) {
-                for (JsonNode holiday : itemNode) {
-                    HolidayDTO holidayDTO = parseHolidayItem(holiday, year);
+                // 데이터가 배열인지 객체인지 확인
+                JsonNode itemNode = itemsNode.path("item");
+                if (itemNode.isArray()) {
+                    for (JsonNode holiday : itemNode) {
+                        HolidayDTO holidayDTO = parseHolidayItem(holiday, year);
+                        if (holidayDTO != null) {
+                            holidays.add(holidayDTO);
+                        }
+                    }
+                } else if (!itemNode.isMissingNode()) {
+                    HolidayDTO holidayDTO = parseHolidayItem(itemNode, year);
                     if (holidayDTO != null) {
                         holidays.add(holidayDTO);
                     }
                 }
-            } else if (!itemNode.isMissingNode()) {
-                HolidayDTO holidayDTO = parseHolidayItem(itemNode, year);
-                if (holidayDTO != null) {
-                    holidays.add(holidayDTO);
-                }
             }
-
         } catch (Exception e) {
             log.error("공공 API 응답 파싱 실패: {}", e.getMessage());
-            throw new RuntimeException("API 응답 파싱 오류", e);
+            // 파싱 실패 시 기본 공휴일 생성
+            log.warn("API 파싱 실패로 인해 기본 공휴일 데이터를 생성합니다.");
+            return getDefaultKoreanHolidays(year);
         }
 
         return holidays;
+    }
+
+    /**
+     * 기본 한국 공휴일 데이터 반환
+     */
+    private List<HolidayDTO> getDefaultKoreanHolidays(int year) {
+        List<HolidayDTO> holidays = new ArrayList<>();
+
+        // 기본 공휴일들
+        addHoliday(holidays, year, 1, 1, "신정", "KR");
+        addHoliday(holidays, year, 3, 1, "삼일절", "KR");
+        addHoliday(holidays, year, 5, 5, "어린이날", "KR");
+        addHoliday(holidays, year, 6, 6, "현충일", "KR");
+        addHoliday(holidays, year, 8, 15, "광복절", "KR");
+        addHoliday(holidays, year, 10, 3, "개천절", "KR");
+        addHoliday(holidays, year, 10, 9, "한글날", "KR");
+        addHoliday(holidays, year, 12, 25, "크리스마스", "KR");
+
+        return holidays;
+    }
+
+    /**
+     * 공휴일 DTO 생성 헬퍼 메서드
+     */
+    private void addHoliday(List<HolidayDTO> holidays, int year, int month, int day, String name, String countryCode) {
+        HolidayDTO holiday = new HolidayDTO();
+        holiday.setName(name);
+        holiday.setHolidayDate(LocalDate.of(year, month, day));
+        holiday.setCountryCode(countryCode);
+        holiday.setHolidayType(Holiday.HolidayType.PUBLIC);
+        holiday.setDescription(name);
+        holiday.setIsRecurring(true);
+        holiday.setColor("#FF6B6B");
+        holidays.add(holiday);
+    }
+
+    /**
+     * XML 응답 파싱 (간단한 문자열 파싱)
+     */
+    private List<HolidayDTO> parseXmlResponse(String xmlResponse, int year) {
+        List<HolidayDTO> holidays = new ArrayList<>();
+
+        try {
+            // 간단한 문자열 파싱으로 XML 처리
+            String[] items = xmlResponse.split("<item>");
+
+            for (int i = 1; i < items.length; i++) {
+                String item = items[i];
+
+                // dateName 추출
+                String dateName = extractXmlValue(item, "dateName");
+                // locdate 추출
+                String locdate = extractXmlValue(item, "locdate");
+
+                if (!dateName.isEmpty() && !locdate.isEmpty()) {
+                    try {
+                        LocalDate holidayDate = LocalDate.parse(locdate, DateTimeFormatter.ofPattern("yyyyMMdd"));
+
+                        HolidayDTO holiday = new HolidayDTO();
+                        holiday.setName(dateName);
+                        holiday.setHolidayDate(holidayDate);
+                        holiday.setCountryCode("KR");
+                        holiday.setHolidayType(Holiday.HolidayType.PUBLIC);
+                        holiday.setDescription(dateName);
+                        holiday.setIsRecurring(true);
+                        holiday.setColor("#FF6B6B");
+
+                        holidays.add(holiday);
+                    } catch (Exception e) {
+                        log.warn("날짜 파싱 실패: {}", locdate);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("XML 파싱 실패: {}", e.getMessage());
+        }
+
+        return holidays;
+    }
+
+    /**
+     * XML에서 특정 태그의 값 추출
+     */
+    private String extractXmlValue(String xml, String tagName) {
+        try {
+            String startTag = "<" + tagName + ">";
+            String endTag = "</" + tagName + ">";
+
+            int startIndex = xml.indexOf(startTag);
+            int endIndex = xml.indexOf(endTag);
+
+            if (startIndex != -1 && endIndex != -1) {
+                return xml.substring(startIndex + startTag.length(), endIndex).trim();
+            }
+        } catch (Exception e) {
+            log.warn("XML 값 추출 실패: {} from {}", tagName, xml);
+        }
+
+        return "";
     }
 
     /**

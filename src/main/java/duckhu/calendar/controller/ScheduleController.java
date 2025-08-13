@@ -21,7 +21,7 @@ import java.util.Map;
  * 이미지, 링크, 추천 기능 등을 포함한 향상된 일정 관리 API
  */
 @RestController
-@RequestMapping("/schedules")
+@RequestMapping("/api/schedules")
 @CrossOrigin(origins = "http://localhost:5173", allowCredentials = "true")
 public class ScheduleController {
 

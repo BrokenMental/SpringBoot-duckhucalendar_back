@@ -13,7 +13,7 @@ import java.util.Map;
  * 관리자 기능 컨트롤러 - 공공데이터 API 연동
  */
 @RestController
-@RequestMapping("/admin")
+@RequestMapping("/api/admin")
 @RequiredArgsConstructor
 @Slf4j
 public class AdminController {

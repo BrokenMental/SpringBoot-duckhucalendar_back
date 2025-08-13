@@ -1,6 +1,7 @@
 package duckhu.calendar.controller;
 
 import duckhu.calendar.dto.HolidayDTO;
+import duckhu.calendar.entity.Holiday;
 import duckhu.calendar.service.HolidayService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,7 +20,7 @@ import java.util.Map;
  * 공휴일/국경일 관리 컨트롤러
  */
 @RestController
-@RequestMapping("/holidays")
+@RequestMapping("/api/holidays")
 @RequiredArgsConstructor
 @Slf4j
 @CrossOrigin(origins = "http://localhost:5173", allowCredentials = "true")
@@ -103,14 +105,64 @@ public class HolidayController {
             response.put("year", year);
             response.put("countryCode", countryCode);
             response.put("holidays", holidays);
-            response.put("count", holidays.size());
+            response.put("count", holidays != null ? holidays.size() : 0);
+
+            log.info("{}년 공휴일 {}개 조회 완료", year, holidays != null ? holidays.size() : 0);
 
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
             log.error("연도별 공휴일 조회 실패: {}", e.getMessage());
-            return createErrorResponse("연도별 공휴일 조회에 실패했습니다.", e.getMessage());
+
+            // 실패 시 기본 공휴일 반환
+            List<HolidayDTO> defaultHolidays = getDefaultHolidaysForError(year, countryCode);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("year", year);
+            response.put("countryCode", countryCode);
+            response.put("holidays", defaultHolidays);
+            response.put("count", defaultHolidays.size());
+            response.put("message", "기본 공휴일 데이터를 제공합니다.");
+
+            return ResponseEntity.ok(response); // 200 OK로 반환하여 프론트엔드에서 처리할 수 있도록
         }
+    }
+
+    /**
+     * 에러 발생 시 기본 공휴일 반환
+     */
+    private List<HolidayDTO> getDefaultHolidaysForError(int year, String countryCode) {
+        List<HolidayDTO> holidays = new ArrayList<>();
+
+        if ("KR".equals(countryCode)) {
+            addDefaultHoliday(holidays, year, 1, 1, "신정");
+            addDefaultHoliday(holidays, year, 3, 1, "삼일절");
+            addDefaultHoliday(holidays, year, 5, 5, "어린이날");
+            addDefaultHoliday(holidays, year, 6, 6, "현충일");
+            addDefaultHoliday(holidays, year, 8, 15, "광복절");
+            addDefaultHoliday(holidays, year, 10, 3, "개천절");
+            addDefaultHoliday(holidays, year, 10, 9, "한글날");
+            addDefaultHoliday(holidays, year, 12, 25, "크리스마스");
+        }
+
+        return holidays;
+    }
+
+    /**
+     * 기본 공휴일 생성 헬퍼
+     */
+    private void addDefaultHoliday(List<HolidayDTO> holidays, int year, int month, int day, String name) {
+        HolidayDTO holiday = new HolidayDTO();
+        holiday.setId(-1L);
+        holiday.setName(name);
+        holiday.setHolidayDate(LocalDate.of(year, month, day));
+        holiday.setCountryCode("KR");
+        holiday.setHolidayType(Holiday.HolidayType.PUBLIC);
+        holiday.setDescription(name);
+        holiday.setIsRecurring(true);
+        holiday.setColor("#FF6B6B");
+        holidays.add(holiday);
     }
 
     /**
