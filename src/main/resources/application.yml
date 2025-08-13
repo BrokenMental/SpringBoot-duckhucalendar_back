@@ -13,9 +13,6 @@ spring:
 
   # Spring Boot가 Vue.js 라우팅을 처리하도록 설정
   mvc:
-    throw-exception-if-no-handler-found: false
-    static-path-pattern: /static/**
-
     cors:
       allowed-origins: "http://localhost:5173"
       allowed-methods: "*"

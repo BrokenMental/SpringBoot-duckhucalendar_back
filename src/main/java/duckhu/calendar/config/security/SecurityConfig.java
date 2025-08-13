@@ -41,26 +41,22 @@ public class SecurityConfig {
 
                 // 요청 권한 설정
                 .authorizeHttpRequests(auth -> auth
-                        // 인증 없이 접근 가능한 엔드포인트 (로그인 관련)
+                        // 인증 없이 접근 가능한 엔드포인트
                         .requestMatchers("/api/admin/request-temp-password", "/api/admin/login").permitAll()
 
-                        // 공개 API (인증 불필요)
+                        // 공개 API
                         .requestMatchers("/api/schedules/**", "/api/holidays/**").permitAll()
                         .requestMatchers("/api/notices/active", "/api/notices/{id}").permitAll()
                         .requestMatchers("/api/event-requests/submit", "/api/event-requests/send-verification", "/api/event-requests/verify-email").permitAll()
                         .requestMatchers("/api/email-subscriptions", "/api/email-subscriptions/unsubscribe/**").permitAll()
 
-                        // 정적 리소스 및 Vue.js 라우팅 허용
-                        .requestMatchers("/", "/admin", "/admin-login", "/settings").permitAll()
-                        .requestMatchers("/static/**", "/assets/**", "/*.js", "/*.css", "/*.ico", "/*.png", "/*.jpg").permitAll()
+                        // 관리자 권한이 필요한 API 엔드포인트 (개발 환경에서 임시 허용)
+                        .requestMatchers("/api/admin/**").permitAll() // 임시로 permitAll
+                        .requestMatchers("/api/notices/admin/**").permitAll() // 임시로 permitAll
+                        .requestMatchers("/api/event-requests/admin/**").permitAll() // 임시로 permitAll
+                        .requestMatchers("/api/email-subscriptions/admin/**").permitAll() // 임시로 permitAll
 
-                        // 관리자 권한이 필요한 API 엔드포인트
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/api/notices/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/api/event-requests/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/api/email-subscriptions/admin/**").hasRole("ADMIN")
-
-                        // 나머지 요청은 허용 (Vue.js SPA 라우팅을 위해)
+                        // 나머지 모든 요청 허용
                         .anyRequest().permitAll()
                 );
 
