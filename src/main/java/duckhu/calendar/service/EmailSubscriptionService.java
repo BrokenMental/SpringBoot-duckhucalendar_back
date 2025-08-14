@@ -105,7 +105,7 @@ public class EmailSubscriptionService {
      * 구독자 상태 변경 (관리자용)
      */
     @Transactional
-    public void updateSubscriberStatus(Long subscriberId, boolean isActive) {
+    public EmailSubscription updateSubscriberStatus(Long subscriberId, boolean isActive) {
         EmailSubscription subscription = subscriptionRepository.findById(subscriberId)
                 .orElseThrow(() -> new RuntimeException("구독자를 찾을 수 없습니다."));
 
@@ -113,7 +113,7 @@ public class EmailSubscriptionService {
         if (!isActive) {
             subscription.setUnsubscribedAt(LocalDateTime.now());
         }
-        subscriptionRepository.save(subscription);
+        return subscriptionRepository.save(subscription);
     }
 
     /**

@@ -142,38 +142,6 @@ public class EmailSubscriptionController {
     }
 
     /**
-     * 구독자 상태 변경 (관리자 전용)
-     * PATCH /api/email-subscriptions/{id}/status
-     */
-    @PatchMapping("/{id}/status")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<?> updateSubscriberStatus(
-            @PathVariable Long id,
-            @RequestBody Map<String, Boolean> request) {
-        try {
-            Boolean isActive = request.get("isActive");
-            if (isActive == null) {
-                return createErrorResponse("isActive 값이 필요합니다.", HttpStatus.BAD_REQUEST);
-            }
-
-            subscriptionService.updateSubscriberStatus(id, isActive);
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("message", isActive ? "구독자가 활성화되었습니다." : "구독자가 비활성화되었습니다.");
-            response.put("subscriberId", id);
-            response.put("isActive", isActive);
-
-            return ResponseEntity.ok(response);
-
-        } catch (RuntimeException e) {
-            return createErrorResponse(e.getMessage(), HttpStatus.NOT_FOUND);
-        } catch (Exception e) {
-            return createErrorResponse("구독자 상태 변경에 실패했습니다: " + e.getMessage(),
-                    HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    /**
      * 에러 응답 생성
      */
     private ResponseEntity<?> createErrorResponse(String message, HttpStatus status) {
@@ -183,5 +151,70 @@ public class EmailSubscriptionController {
         errorResponse.put("timestamp", java.time.LocalDateTime.now().toString());
         errorResponse.put("status", status.value());
         return ResponseEntity.status(status).body(errorResponse);
+    }
+
+    /**
+     * 활성 구독자 목록 조회 (관리자 전용)
+     * GET /api/email-subscriptions/active
+     */
+    @GetMapping("/active")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> getActiveSubscribers() {
+        try {
+            List<EmailSubscription> activeSubscribers = subscriptionService.getActiveSubscribers();
+
+            if (activeSubscribers == null) {
+                activeSubscribers = new ArrayList<>();
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("subscribers", activeSubscribers);
+            response.put("total", activeSubscribers.size());
+            response.put("active", activeSubscribers.size());
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("subscribers", new ArrayList<>());
+            response.put("total", 0);
+            response.put("active", 0);
+            response.put("error", e.getMessage());
+
+            return ResponseEntity.ok(response);
+        }
+    }
+
+    /**
+     * 구독자 상태 변경 (관리자 전용)
+     * PATCH /api/email-subscriptions/{id}/status
+     */
+    @PatchMapping("/{id}/status")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> updateSubscriberStatus(@PathVariable Long id,
+                                                    @RequestBody Map<String, Boolean> request) {
+        try {
+            Boolean isActive = request.get("isActive");
+            if (isActive == null) {
+                return createErrorResponse("isActive 값이 필요합니다.", HttpStatus.BAD_REQUEST);
+            }
+
+            EmailSubscription updatedSubscriber = subscriptionService.updateSubscriberStatus(id, isActive);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "구독자 상태가 변경되었습니다.");
+            response.put("subscriber", updatedSubscriber);
+            response.put("success", true);
+
+            return ResponseEntity.ok(response);
+
+        } catch (RuntimeException e) {
+            return createErrorResponse(e.getMessage(), HttpStatus.NOT_FOUND);
+        } catch (Exception e) {
+            return createErrorResponse("구독자 상태 변경에 실패했습니다: " + e.getMessage(),
+                    HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 }

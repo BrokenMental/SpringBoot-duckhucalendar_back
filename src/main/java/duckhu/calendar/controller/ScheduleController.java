@@ -12,6 +12,7 @@ import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -524,5 +525,39 @@ public class ScheduleController {
         errorResponse.put("status", HttpStatus.BAD_REQUEST.value());
 
         return ResponseEntity.badRequest().body(errorResponse);
+    }
+
+    /**
+     * 최근 활동 조회 (관리자용)
+     * GET /api/schedules/recent-activity
+     */
+    @GetMapping("/recent-activity")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> getRecentActivity(@RequestParam(defaultValue = "10") int limit) {
+        try {
+            // 최근 생성된 일정들을 활동으로 반환
+            List<ScheduleResponseDto> recentSchedules = scheduleService.getRecentSchedules(limit);
+
+            List<Map<String, Object>> activities = new ArrayList<>();
+            for (ScheduleResponseDto schedule : recentSchedules) {
+                Map<String, Object> activity = new HashMap<>();
+                activity.put("id", schedule.getId());
+                activity.put("type", "schedule_created");
+                activity.put("title", "새 일정: " + schedule.getTitle());
+                activity.put("description", schedule.getTitle() + " 일정이 생성되었습니다.");
+                activity.put("createdAt", schedule.getCreatedAt());
+                activity.put("relatedId", schedule.getId());
+                activities.add(activity);
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("activities", activities);
+            response.put("count", activities.size());
+            response.put("limit", limit);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return createErrorResponse("최근 활동 조회에 실패했습니다.", e.getMessage());
+        }
     }
 }

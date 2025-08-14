@@ -7,7 +7,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -121,5 +123,52 @@ public class AdminController {
         log.info("관리자 로그아웃");
 
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 시스템 활동 로그 조회 (관리자 전용)
+     * GET /api/admin/system-activity
+     */
+    @GetMapping("/system-activity")
+    public ResponseEntity<Map<String, Object>> getSystemActivity(@RequestParam(defaultValue = "10") int limit) {
+        try {
+            // 임시로 시스템 활동 데이터 생성 (실제로는 로그 테이블에서 조회)
+            List<Map<String, Object>> systemActivities = new ArrayList<>();
+
+            // 샘플 시스템 활동 데이터
+            Map<String, Object> activity1 = new HashMap<>();
+            activity1.put("id", 1);
+            activity1.put("type", "system_startup");
+            activity1.put("title", "시스템 시작");
+            activity1.put("description", "애플리케이션이 정상적으로 시작되었습니다.");
+            activity1.put("timestamp", java.time.LocalDateTime.now().minusHours(1));
+            systemActivities.add(activity1);
+
+            Map<String, Object> activity2 = new HashMap<>();
+            activity2.put("id", 2);
+            activity2.put("type", "admin_login");
+            activity2.put("title", "관리자 로그인");
+            activity2.put("description", "관리자가 시스템에 로그인했습니다.");
+            activity2.put("timestamp", java.time.LocalDateTime.now().minusMinutes(30));
+            systemActivities.add(activity2);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("activities", systemActivities);
+            response.put("count", systemActivities.size());
+            response.put("limit", limit);
+            response.put("success", true);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("시스템 활동 조회 실패: {}", e.getMessage());
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("activities", new ArrayList<>());
+            response.put("count", 0);
+            response.put("error", e.getMessage());
+            response.put("success", false);
+
+            return ResponseEntity.ok(response);
+        }
     }
 }
