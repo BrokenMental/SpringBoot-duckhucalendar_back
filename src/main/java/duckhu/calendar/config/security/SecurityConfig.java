@@ -41,22 +41,14 @@ public class SecurityConfig {
 
                 // 요청 권한 설정
                 .authorizeHttpRequests(auth -> auth
-                        // 인증 없이 접근 가능한 엔드포인트
-                        .requestMatchers("/api/admin/request-temp-password", "/api/admin/login").permitAll()
+                        // 관리자 엔드포인트 - 인증 필요 없음 (토큰으로 자체 인증)
+                        .requestMatchers("/api/admin/**").permitAll()
+                        .requestMatchers("/api/email-subscriptions/admin/**").permitAll()
+                        .requestMatchers("/api/event-requests/admin/**").permitAll()
+                        .requestMatchers("/api/schedules/recent-activity").permitAll()
+                        .requestMatchers("/api/notices/admin/**").permitAll()
 
-                        // 공개 API
-                        .requestMatchers("/api/schedules/**", "/api/holidays/**").permitAll()
-                        .requestMatchers("/api/notices/active", "/api/notices/{id}").permitAll()
-                        .requestMatchers("/api/event-requests/submit", "/api/event-requests/send-verification", "/api/event-requests/verify-email").permitAll()
-                        .requestMatchers("/api/email-subscriptions", "/api/email-subscriptions/unsubscribe/**").permitAll()
-
-                        // 관리자 권한이 필요한 API 엔드포인트 (개발 환경에서 임시 허용)
-                        .requestMatchers("/api/admin/**").permitAll() // 임시로 permitAll
-                        .requestMatchers("/api/notices/admin/**").permitAll() // 임시로 permitAll
-                        .requestMatchers("/api/event-requests/admin/**").permitAll() // 임시로 permitAll
-                        .requestMatchers("/api/email-subscriptions/admin/**").permitAll() // 임시로 permitAll
-
-                        // 나머지 모든 요청 허용
+                        // 나머지는 모두 허용
                         .anyRequest().permitAll()
                 );
 

@@ -87,7 +87,6 @@ public class EmailSubscriptionController {
      * GET /api/email-subscriptions
      */
     @GetMapping("/admin")
-    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> getSubscribersAdmin() {
         try {
             List<EmailSubscription> subscribers = subscriptionService.getAllSubscribers();

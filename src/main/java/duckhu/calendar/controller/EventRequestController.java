@@ -1,5 +1,6 @@
 package duckhu.calendar.controller;
 
+import duckhu.calendar.config.security.JwtUtil;
 import duckhu.calendar.entity.EventRequest;
 import duckhu.calendar.service.EventRequestService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +20,9 @@ public class EventRequestController {
 
     @Autowired
     private EventRequestService eventRequestService;
+
+    @Autowired
+    private JwtUtil jwtUtil;  // JWT 유틸리티 클래스
 
     /**
      * 이벤트 요청 제출
@@ -115,15 +119,26 @@ public class EventRequestController {
      * GET /api/event-requests/admin/list
      */
     @GetMapping("/admin/list")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<?> getEventRequests() {
+    public ResponseEntity<?> getEventRequests(@RequestHeader(value = "Authorization", required = false) String authHeader) {
+        // 토큰 검증
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ResponseEntity.status(403).body("인증이 필요합니다.");
+        }
+
+        String token = authHeader.substring(7);
+
         try {
+            // JWT 토큰 검증
+            if (!jwtUtil.validateToken(token)) {
+                return ResponseEntity.status(403).body("유효하지 않은 토큰입니다.");
+            }
+
+            // 실제 데이터 반환
             List<EventRequest> requests = eventRequestService.getAllRequests();
-            return ResponseEntity.ok(requests);
+            return ResponseEntity.ok(Map.of("requests", requests));
 
         } catch (Exception e) {
-            return createErrorResponse("요청 목록 조회 실패: " + e.getMessage(),
-                    HttpStatus.INTERNAL_SERVER_ERROR);
+            return ResponseEntity.status(403).body("인증 실패: " + e.getMessage());
         }
     }
 

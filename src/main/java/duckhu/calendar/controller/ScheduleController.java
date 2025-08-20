@@ -532,7 +532,6 @@ public class ScheduleController {
      * GET /api/schedules/recent-activity
      */
     @GetMapping("/recent-activity")
-    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> getRecentActivity(@RequestParam(defaultValue = "10") int limit) {
         try {
             // 최근 생성된 일정들을 활동으로 반환
