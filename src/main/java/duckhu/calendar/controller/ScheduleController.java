@@ -1,13 +1,14 @@
 package duckhu.calendar.controller;
 
+import duckhu.calendar.config.security.AdminAuthUtil;
 import duckhu.calendar.dto.ScheduleRequestDto;
 import duckhu.calendar.dto.ScheduleResponseDto;
 import duckhu.calendar.service.ScheduleService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
 
@@ -27,10 +28,12 @@ import java.util.Map;
 public class ScheduleController {
 
     private final ScheduleService scheduleService;
+    private final AdminAuthUtil adminAuthUtil;
 
     @Autowired
-    public ScheduleController(ScheduleService scheduleService) {
+    public ScheduleController(ScheduleService scheduleService, AdminAuthUtil adminAuthUtil) {
         this.scheduleService = scheduleService;
+        this.adminAuthUtil = adminAuthUtil;
     }
 
     /**
@@ -83,7 +86,6 @@ public class ScheduleController {
      * POST /api/schedules
      */
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> createSchedule(@Valid @RequestBody ScheduleRequestDto requestDto,
                                             BindingResult bindingResult) {
         try {
@@ -118,7 +120,6 @@ public class ScheduleController {
      * PUT /api/schedules/{id}
      */
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> updateSchedule(@PathVariable Long id,
                                             @Valid @RequestBody ScheduleRequestDto requestDto,
                                             BindingResult bindingResult) {
@@ -157,7 +158,6 @@ public class ScheduleController {
      * DELETE /api/schedules/{id}
      */
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> deleteSchedule(@PathVariable Long id) {
         try {
             scheduleService.deleteSchedule(id);
@@ -342,7 +342,6 @@ public class ScheduleController {
      * PATCH /api/schedules/{id}/featured
      */
     @PatchMapping("/{id}/featured")
-    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> toggleFeatured(@PathVariable Long id,
                                             @RequestBody Map<String, Boolean> request) {
         try {
@@ -529,12 +528,22 @@ public class ScheduleController {
 
     /**
      * 최근 활동 조회 (관리자용)
-     * GET /api/schedules/recent-activity
      */
     @GetMapping("/recent-activity")
-    public ResponseEntity<?> getRecentActivity(@RequestParam(defaultValue = "10") int limit) {
+    public ResponseEntity<?> getRecentActivity(
+            @RequestParam(defaultValue = "10") int limit,
+            HttpServletRequest request) {
+
+        // JWT 토큰 검증 (AdminAuthUtil 주입 필요)
+        if (!adminAuthUtil.isAdminAuthenticated(request)) {
+            return ResponseEntity.status(403).body(Map.of(
+                    "success", false,
+                    "message", "접근 권한이 없습니다."
+            ));
+        }
+
         try {
-            // 최근 생성된 일정들을 활동으로 반환
+            // 최근 생성/수정된 일정 조회
             List<ScheduleResponseDto> recentSchedules = scheduleService.getRecentSchedules(limit);
 
             List<Map<String, Object>> activities = new ArrayList<>();
@@ -542,21 +551,22 @@ public class ScheduleController {
                 Map<String, Object> activity = new HashMap<>();
                 activity.put("id", schedule.getId());
                 activity.put("type", "schedule_created");
-                activity.put("title", "새 일정: " + schedule.getTitle());
-                activity.put("description", schedule.getTitle() + " 일정이 생성되었습니다.");
-                activity.put("createdAt", schedule.getCreatedAt());
-                activity.put("relatedId", schedule.getId());
+                activity.put("title", schedule.getTitle());
+                activity.put("timestamp", schedule.getCreatedAt());
                 activities.add(activity);
             }
 
-            Map<String, Object> response = new HashMap<>();
-            response.put("activities", activities);
-            response.put("count", activities.size());
-            response.put("limit", limit);
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "activities", activities
+            ));
 
-            return ResponseEntity.ok(response);
         } catch (Exception e) {
-            return createErrorResponse("최근 활동 조회에 실패했습니다.", e.getMessage());
+            return ResponseEntity.ok(Map.of(
+                    "success", false,
+                    "activities", new ArrayList<>(),
+                    "error", e.getMessage()
+            ));
         }
     }
 }
