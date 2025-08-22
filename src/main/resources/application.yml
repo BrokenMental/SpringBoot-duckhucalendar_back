@@ -54,8 +54,8 @@ spring:
 
 # JWT 설정
 jwt:
-  secret: duckhu-calendar-jwt-secret-key-must-be-at-least-32-characters-long-for-security
-  expiration: 3600000 # 1시간 (밀리초)
+  secret: duckhuCalendarJwtSecretKeyMustBeAtLeast32CharactersLongForSecurity2025
+  expiration: 86400000
 
 # 서버 설정 - context-path 제거
 server:

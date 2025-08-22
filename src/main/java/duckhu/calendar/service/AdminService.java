@@ -18,12 +18,16 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 public class AdminService {
 
-    // 임시 비밀번호 저장 (실제로는 Redis 사용 권장)
-    private final Map<String, TempPasswordInfo> tempPasswords = new ConcurrentHashMap<>();
+    // 임시 비밀번호 생성용 문자
+    private static final String CHARACTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 혼동하기 쉬운 문자 제외 (I, O, 1, 0)
 
     @Value("${app.admin.email}")
     private String adminEmail;
+    private static final int PASSWORD_LENGTH = 6;
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+    private static final int EXPIRY_MINUTES = 5; // 5분으로 변경
+    // 임시 비밀번호 저장
+    private final Map<String, TempPasswordInfo> tempPasswords = new ConcurrentHashMap<>();
     @Autowired
     private JwtUtil jwtUtil;
 
@@ -39,11 +43,11 @@ public class AdminService {
         // 기존 임시 비밀번호가 있으면 삭제
         tempPasswords.remove(email);
 
-        // 새로운 임시 비밀번호 생성 (6자리 숫자)
+        // 새로운 임시 비밀번호 생성 (문자+숫자 조합)
         String tempPassword = generateTempPassword();
 
-        // 30분 후 만료
-        long expiryTime = System.currentTimeMillis() + (30 * 60 * 1000);
+        // 5분 후 만료
+        long expiryTime = System.currentTimeMillis() + (EXPIRY_MINUTES * 60 * 1000);
 
         tempPasswords.put(email, new TempPasswordInfo(tempPassword, expiryTime));
 
@@ -53,17 +57,33 @@ public class AdminService {
         log.info("📧 관리자 임시 비밀번호 발송");
         log.info("이메일: {}", email);
         log.info("임시 비밀번호: {}", tempPassword);
-        log.info("유효 시간: 30분");
+        log.info("유효 시간: {}분", EXPIRY_MINUTES);
         log.info("=".repeat(50));
 
-        // 30분 후 자동 삭제 스케줄링
+        // 5분 후 자동 삭제 스케줄링
         scheduler.schedule(() -> {
             TempPasswordInfo info = tempPasswords.get(email);
             if (info != null && info.isExpired()) {
                 tempPasswords.remove(email);
                 log.info("임시 비밀번호 자동 만료: {}", email);
             }
-        }, 30, TimeUnit.MINUTES);
+        }, EXPIRY_MINUTES, TimeUnit.MINUTES);
+    }
+
+    /**
+     * 6자리 임시 비밀번호 생성 (문자+숫자 조합)
+     * 예: A3K7P9, B2M5Q8 등
+     */
+    private String generateTempPassword() {
+        SecureRandom random = new SecureRandom();
+        StringBuilder password = new StringBuilder(PASSWORD_LENGTH);
+
+        for (int i = 0; i < PASSWORD_LENGTH; i++) {
+            int index = random.nextInt(CHARACTERS.length());
+            password.append(CHARACTERS.charAt(index));
+        }
+
+        return password.toString();
     }
 
     /**
@@ -114,24 +134,6 @@ public class AdminService {
     }
 
     /**
-     * 6자리 임시 비밀번호 생성
-     */
-    private String generateTempPassword() {
-        SecureRandom random = new SecureRandom();
-        int password = 100000 + random.nextInt(900000); // 100000 ~ 999999
-        return String.valueOf(password);
-    }
-
-    /**
-     * 현재 활성 임시 비밀번호 개수 (모니터링용)
-     */
-    public int getActiveTempPasswordCount() {
-        // 만료된 것들 정리
-        tempPasswords.entrySet().removeIf(entry -> entry.getValue().isExpired());
-        return tempPasswords.size();
-    }
-
-    /**
      * 임시 비밀번호 정보를 담는 내부 클래스
      */
     private static class TempPasswordInfo {
@@ -146,5 +148,14 @@ public class AdminService {
         boolean isExpired() {
             return System.currentTimeMillis() > expiryTime;
         }
+    }
+
+    /**
+     * 현재 활성 임시 비밀번호 개수 (모니터링용)
+     */
+    public int getActiveTempPasswordCount() {
+        // 만료된 것들 정리
+        tempPasswords.entrySet().removeIf(entry -> entry.getValue().isExpired());
+        return tempPasswords.size();
     }
 }
