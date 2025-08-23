@@ -39,6 +39,10 @@ public class SecurityConfig {
 
                 // 요청 권한 설정
                 .authorizeHttpRequests(auth -> auth
+                        // 해킹 시도 의심 경로 차단 추가
+                        .requestMatchers("/goform/**", "/cgi-bin/**", "/setup.cgi", "/*.cgi").denyAll()
+                        .requestMatchers("/admin.html", "/admin.php", "/wp-admin/**").denyAll()
+
                         // 관리자 엔드포인트 - 인증 필요 없음 (토큰으로 자체 인증)
                         .requestMatchers("/api/admin/**").permitAll()
                         .requestMatchers("/api/email-subscriptions/admin/**").permitAll()
